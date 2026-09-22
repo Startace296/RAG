@@ -1,10 +1,21 @@
 import json
 import warnings
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, Mapping, Sequence, TypedDict
 
 import faiss
 import numpy as np
+
+
+class SearchImageRef(TypedDict, total=False):
+    """Image reference attached to a retrieved chunk."""
+
+    document_id: str
+    page_number: int
+    image_index: int
+    image_path: str | None
+    ocr_text: str | None
+    caption: str | None
 
 
 class SearchResult(TypedDict, total=False):
@@ -25,6 +36,7 @@ class SearchResult(TypedDict, total=False):
     chunking_strategy: str
     parent_id: str
     parent_text: str
+    image_refs: list[SearchImageRef]
 
 
 class VectorStore:
@@ -53,7 +65,7 @@ class VectorStore:
         self.index: faiss.Index | None = None
         self.metadata: list[dict[str, Any]] = []
 
-    def build(self, embeddings: np.ndarray, chunks: list[dict[str, Any]]) -> None:
+    def build(self, embeddings: np.ndarray, chunks: Sequence[Mapping[str, Any]]) -> None:
         """Build a FAISS index from embeddings and keep chunk metadata.
 
         Args:
@@ -90,6 +102,7 @@ class VectorStore:
                 "chunking_strategy": str(chunk.get("chunking_strategy", "")),
                 "parent_id": str(chunk.get("parent_id", "")),
                 "parent_text": str(chunk.get("parent_text", "")),
+                "image_refs": self._coerce_image_refs(chunk.get("image_refs", [])),
             }
             for chunk in chunks
         ]
@@ -168,10 +181,51 @@ class VectorStore:
                     "chunking_strategy": str(metadata.get("chunking_strategy", "")),
                     "parent_id": str(metadata.get("parent_id", "")),
                     "parent_text": str(metadata.get("parent_text", "")),
+                    "image_refs": self._coerce_image_refs(metadata.get("image_refs", [])),
                 }
             )
 
         return results
+
+    @staticmethod
+    def _coerce_image_refs(value: Any) -> list[SearchImageRef]:
+        if not isinstance(value, list):
+            return []
+
+        image_refs: list[SearchImageRef] = []
+        for image in value:
+            if not isinstance(image, Mapping):
+                continue
+            image_refs.append(
+                {
+                    "document_id": str(image.get("document_id", "")),
+                    "page_number": VectorStore._int_value(image.get("page_number", 0)),
+                    "image_index": VectorStore._int_value(image.get("image_index", 0)),
+                    "image_path": (
+                        str(image["image_path"])
+                        if image.get("image_path") is not None
+                        else None
+                    ),
+                    "ocr_text": (
+                        str(image["ocr_text"])
+                        if image.get("ocr_text") is not None
+                        else None
+                    ),
+                    "caption": (
+                        str(image["caption"])
+                        if image.get("caption") is not None
+                        else None
+                    ),
+                }
+            )
+        return image_refs
+
+    @staticmethod
+    def _int_value(value: Any) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
 
     def _normalize_index_type(self, index_type: str) -> str:
         normalized = index_type.strip().lower()

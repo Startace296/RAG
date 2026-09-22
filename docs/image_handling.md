@@ -9,7 +9,9 @@ PDF page
   -> PyMuPDF page.get_images(full=True)
   -> DocumentImage metadata
   -> optional image export
+  -> optional OCR
   -> DocumentPage.images
+  -> DocumentPage.to_chunk_input()
   -> Document.pages
 ```
 
@@ -45,6 +47,7 @@ Cấu hình nằm trong `.env`:
 
 ```env
 DOCUMENT_IMAGE_EXPORT=true
+DOCUMENT_IMAGE_OCR=false
 IMAGE_OUTPUT_DIR=storage/images
 ```
 
@@ -55,6 +58,31 @@ DOCUMENT_IMAGE_EXPORT=false
 ```
 
 Khi tắt export, hệ thống vẫn ghi nhận ảnh trong `DocumentImage`, nhưng `image_path` sẽ là `None`.
+
+Nếu bật `DOCUMENT_IMAGE_OCR=true`, loader cần có file ảnh để đưa vào OCR. Khi đó ảnh sẽ được ghi ra `IMAGE_OUTPUT_DIR` ngay cả khi `DOCUMENT_IMAGE_EXPORT=false`.
+
+## OCR Ảnh
+
+Nếu `DOCUMENT_IMAGE_OCR=true`, loader sẽ thử đọc chữ trong ảnh bằng `pytesseract`:
+
+```text
+PDF image
+  -> exported image file
+  -> pytesseract.image_to_string()
+  -> DocumentImage.ocr_text
+  -> DocumentPage.chunk_text()
+  -> split_documents()
+```
+
+OCR là optional. Nếu chưa cài `pytesseract` hoặc Tesseract OCR binary, pipeline vẫn chạy tiếp và ghi trạng thái lỗi vào `DocumentImage.metadata["ocr_status"]`.
+
+Các trạng thái OCR thường gặp:
+
+- `disabled`: OCR đang tắt.
+- `missing_dependency`: thiếu thư viện Python hoặc Tesseract OCR binary.
+- `failed`: OCR chạy lỗi.
+- `empty`: OCR chạy được nhưng không đọc ra chữ.
+- `extracted`: OCR đọc được text và đưa text đó vào retrieval.
 
 ## Metadata Của Ảnh
 
@@ -79,6 +107,9 @@ DocumentImage(
         "extraction_status": "exported",
         "extension": "png",
         "file_size_bytes": 12345,
+        "ocr_status": "extracted",
+        "ocr_char_count": 120,
+        "ocr_word_count": 18,
     },
 )
 ```
@@ -97,30 +128,36 @@ Page-level metadata cũng có:
 ```python
 {
     "image_count": 2,
+    "image_text_count": 1,
+    "searchable_char_count": 820,
+    "searchable_word_count": 130,
 }
 ```
 
 ## Ảnh Có Được Đưa Vào Retrieval Không?
 
-Hiện tại: chưa.
+Hiện tại: có, nếu ảnh đã có `ocr_text` hoặc `caption`.
 
-Pipeline retrieval hiện tại chỉ embed text:
+Pipeline retrieval embed text sau khi trang được chuyển thành chunk input:
 
 ```text
-DocumentPage.text -> TextChunk -> EmbeddingService -> VectorStore
+DocumentPage.text + DocumentImage.ocr_text/caption
+  -> TextChunk
+  -> EmbeddingService
+  -> VectorStore
 ```
 
-Ảnh mới được:
+Ảnh luôn được:
 
 - phát hiện,
 - lưu ra file,
 - gắn metadata vào `DocumentPage.images`.
 
-Nội dung trong ảnh chưa được chuyển thành text, nên nếu một trang chỉ có sơ đồ/hình mà không có text giải thích, semantic search chưa thể tìm được nội dung đó.
+Khi OCR đọc được chữ, nội dung đó được append vào text của page trước khi chunking. Nhờ vậy một trang chỉ có ảnh nhưng OCR ra text vẫn có thể được đưa vào index.
 
 ## Cách Mở Rộng Sau Này
 
-Có hai hướng chính để đưa ảnh vào RAG:
+Có hai hướng chính để làm giàu ảnh trong RAG:
 
 1. OCR
 
@@ -132,11 +169,11 @@ Luồng:
 DocumentImage.image_path
   -> OCR model
   -> DocumentImage.ocr_text
-  -> append vào page text hoặc tạo image chunk riêng
+  -> append vào page text
   -> embedding
 ```
 
-Phù hợp khi ảnh chứa nhiều chữ.
+Phù hợp khi ảnh chứa nhiều chữ. Hướng này đã có ở mức optional.
 
 2. Image Captioning / Vision Model
 
@@ -162,6 +199,7 @@ Hiện project đã xử lý PDF có hình ở mức ingestion:
 - Lưu ảnh ra thư mục riêng.
 - Ghi lại `image_path` và metadata kỹ thuật.
 - Gắn ảnh vào `DocumentPage.images`.
+- OCR ảnh bằng `pytesseract` nếu bật `DOCUMENT_IMAGE_OCR=true`.
+- Đưa `ocr_text`/`caption` vào text dùng cho chunking và retrieval.
 
-Phần chưa làm là biến nội dung ảnh thành thông tin có thể search được. Bước tiếp theo hợp lý là thêm OCR hoặc caption để sinh `ocr_text`/`caption`, rồi đưa nội dung đó vào chunking.
-
+Phần chưa làm là caption ảnh bằng vision model và tạo image chunk riêng nếu muốn tách ảnh khỏi text thường.

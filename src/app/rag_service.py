@@ -2,7 +2,7 @@ import os
 import re
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
-from typing import TypedDict
+from typing import Any, TypedDict
 
 os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
@@ -48,6 +48,7 @@ class Source(TypedDict):
     section_title: str
     chunking_strategy: str
     parent_id: str
+    image_refs: list[dict[str, Any]]
 
 
 class RagResponse(TypedDict):
@@ -259,6 +260,7 @@ class RagService:
                     "section_title": result.get("section_title", ""),
                     "chunking_strategy": result.get("chunking_strategy", ""),
                     "parent_id": result.get("parent_id", ""),
+                    "image_refs": result.get("image_refs", []),
                 }
             )
 

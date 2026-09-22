@@ -41,6 +41,7 @@ Nếu không rebuild, hệ thống vẫn dùng `index.faiss` và `metadata.json`
 - `CHUNK_SIZE`: số từ mục tiêu tối đa trong một chunk.
 - `CHUNK_OVERLAP`: số từ hoặc đơn vị ngữ cảnh lặp lại giữa hai chunk gần nhau.
 - `MIN_CHUNK_SIZE`: kích thước tối thiểu mong muốn trước khi đóng chunk với các strategy có nhận biết boundary.
+- `section_title`: lấy từ page metadata nếu loader đoán được heading của trang; nếu không có thì chunker fallback sang dòng đầu phù hợp trong chunk.
 
 ## Các Strategy Đã Có
 
@@ -145,6 +146,14 @@ Mỗi chunk hiện lưu thêm metadata:
     "char_count": 1800,
     "section_title": "...",
     "chunking_strategy": "recursive",
+    "image_refs": [
+        {
+            "image_index": 0,
+            "image_path": "storage/images/.../page_0001_image_0000_xref_123.png",
+            "ocr_text": "...",
+            "caption": None,
+        }
+    ],
 }
 ```
 
@@ -154,13 +163,14 @@ Các trường này giúp:
 - Debug chunk quá ngắn/quá dài.
 - So sánh các strategy.
 - Lưu strategy vào `metadata.json` của vector store.
+- Truy vết chunk về ảnh trên cùng page thông qua `image_refs`.
 
 ## Luồng Hiện Tại
 
 ```text
-DocumentPage.text
+DocumentPage.text + DocumentPage.images
   -> split_documents(strategy=CHUNKING_STRATEGY)
-  -> TextChunk + metadata
+  -> TextChunk + metadata + image_refs
   -> EmbeddingService
   -> VectorStore(metadata.json)
   -> SearchResult
@@ -342,5 +352,3 @@ Chưa đạt hoàn toàn phần:
 - Bảng kết quả thực nghiệm thật.
 
 Project đã cải thiện chunking từ fixed word đơn giản sang hệ thống có nhiều strategy và metadata truy vết. Strategy mặc định hiện là `recursive` vì cân bằng tốt giữa giữ ngữ nghĩa và kiểm soát kích thước chunk.
-
-

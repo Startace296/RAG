@@ -1,3 +1,3 @@
-from .vector_store import SearchResult, VectorStore
+from .vector_store import SearchImageRef, SearchResult, VectorStore
 
-__all__ = ["SearchResult", "VectorStore"]
+__all__ = ["SearchImageRef", "SearchResult", "VectorStore"]

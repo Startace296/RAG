@@ -1,3 +1,3 @@
-from .retrieval import SearchResult, VectorStore
+from .retrieval import SearchImageRef, SearchResult, VectorStore
 
-__all__ = ["SearchResult", "VectorStore"]
+__all__ = ["SearchImageRef", "SearchResult", "VectorStore"]

@@ -1,6 +1,6 @@
 import re
 from hashlib import sha256
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, Mapping, TypedDict
 
 
 ChunkingStrategy = Literal[
@@ -23,6 +23,17 @@ SUPPORTED_CHUNKING_STRATEGIES = {
 }
 
 
+class ChunkImageRef(TypedDict, total=False):
+    """Small image reference carried by a text chunk."""
+
+    document_id: str
+    page_number: int
+    image_index: int
+    image_path: str | None
+    ocr_text: str | None
+    caption: str | None
+
+
 class TextChunk(TypedDict, total=False):
     """Text chunk with traceable source and chunking metadata."""
 
@@ -40,10 +51,11 @@ class TextChunk(TypedDict, total=False):
     chunking_strategy: str
     parent_id: str
     parent_text: str
+    image_refs: list[ChunkImageRef]
 
 
 def split_documents(
-    documents: list[dict[str, Any]],
+    documents: list[Mapping[str, Any]],
     chunk_size: int = 300,
     chunk_overlap: int = 50,
     chunking_strategy: str = "recursive",
@@ -354,7 +366,7 @@ def _overlap_tail(units: list[str], chunk_overlap: int) -> list[str]:
 
 
 def _build_chunk(
-    document: dict[str, Any],
+    document: Mapping[str, Any],
     text: str,
     chunk_index: int,
     chunking_strategy: ChunkingStrategy,
@@ -368,6 +380,8 @@ def _build_chunk(
     page = int(document["page"])
     chunk_id = _build_chunk_id(document_id, source, page, chunk_index, text)
     parent_id = _build_parent_id(document_id, source, page, chunk_index, parent_text)
+    image_refs = _build_image_refs(document)
+    section_title = _extract_section_title(document, text)
 
     return {
         "chunk_id": chunk_id,
@@ -380,11 +394,63 @@ def _build_chunk(
         "end_word": end_word,
         "token_count": len(words),
         "char_count": len(text),
-        "section_title": _guess_section_title(text),
+        "section_title": section_title,
         "chunking_strategy": chunking_strategy,
         "parent_id": parent_id,
         "parent_text": parent_text,
+        "image_refs": image_refs,
     }
+
+
+def _build_image_refs(document: Mapping[str, Any]) -> list[ChunkImageRef]:
+    image_refs: list[ChunkImageRef] = []
+    raw_images = document.get("images", [])
+    if not isinstance(raw_images, list):
+        return image_refs
+
+    for image in raw_images:
+        if not isinstance(image, Mapping):
+            continue
+        image_refs.append(
+            {
+                "document_id": str(image.get("document_id", "")),
+                "page_number": _int_value(image.get("page_number", 0)),
+                "image_index": _int_value(image.get("image_index", 0)),
+                "image_path": (
+                    str(image["image_path"])
+                    if image.get("image_path") is not None
+                    else None
+                ),
+                "ocr_text": (
+                    str(image["ocr_text"])
+                    if image.get("ocr_text") is not None
+                    else None
+                ),
+                "caption": (
+                    str(image["caption"])
+                    if image.get("caption") is not None
+                    else None
+                ),
+            }
+        )
+
+    return image_refs
+
+
+def _extract_section_title(document: Mapping[str, Any], text: str) -> str:
+    metadata = document.get("metadata", {})
+    if isinstance(metadata, Mapping):
+        section_title = str(metadata.get("section_title", "")).strip()
+        if section_title:
+            return section_title
+    return _guess_section_title(text)
+
+
+def _int_value(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _find_word_offset(

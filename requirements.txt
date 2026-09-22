@@ -1,6 +1,7 @@
 faiss-cpu
 PyMuPDF
 python-dotenv
+pytesseract
 sentence-transformers
 torch
 transformers
