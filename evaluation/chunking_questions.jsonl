@@ -1,0 +1,33 @@
+{"question": "Hồi quy tuyến tính là gì và dùng để giải loại bài toán nào?", "expected_pages": [100, 104, 105], "expected_keywords": ["linear regression", "hồi quy tuyến tính", "hàm mất mát"]}
+{"question": "Nghiệm của hồi quy tuyến tính được tìm bằng phương trình gradient như thế nào?", "expected_pages": [102, 103, 104], "expected_keywords": ["gradient", "XXT", "pseudo inverse", "hồi quy tuyến tính"]}
+{"question": "Hồi quy ridge giúp tránh overfitting bằng cách nào?", "expected_pages": [107, 114], "expected_keywords": ["ridge", "overfitting", "regularization", "l2"]}
+{"question": "Overfitting là gì và vì sao mô hình quá khớp không tổng quát tốt?", "expected_pages": [108, 109, 110], "expected_keywords": ["overfitting", "quá khớp", "tập huấn luyện", "tập kiểm tra"]}
+{"question": "Xác thực chéo cross validation được dùng để làm gì?", "expected_pages": [113], "expected_keywords": ["cross validation", "xác thực chéo", "tập huấn luyện"]}
+{"question": "Regularization là gì và cơ chế kiểm soát l1 l2 khác nhau thế nào?", "expected_pages": [113, 114, 115], "expected_keywords": ["regularization", "l1", "l2", "weight decay"]}
+{"question": "KNN là thuật toán gì và vì sao được gọi là lazy learning?", "expected_pages": [118, 119], "expected_keywords": ["KNN", "K-nearest neighbor", "lười học", "instance-based"]}
+{"question": "Trong KNN, kết quả của 1NN và 7NN trên dữ liệu Iris khác nhau ra sao?", "expected_pages": [123, 124, 125], "expected_keywords": ["1NN", "7NN", "Iris", "Accuracy"]}
+{"question": "KNN có những ưu điểm và nhược điểm gì?", "expected_pages": [126, 127], "expected_keywords": ["KNN", "ưu điểm", "nhược điểm", "khoảng cách"]}
+{"question": "K-means clustering là gì và mục tiêu của phân cụm K-means là gì?", "expected_pages": [128, 129], "expected_keywords": ["K-means", "cluster", "phân cụm", "Euclid"]}
+{"question": "Hàm mất mát của K-means được xây dựng như thế nào?", "expected_pages": [130, 131], "expected_keywords": ["K-means", "hàm mất mát", "Euclid", "tâm cụm"]}
+{"question": "Thuật toán K-means gồm những bước nào?", "expected_pages": [132, 133], "expected_keywords": ["K-means", "tâm cụm", "trung bình cộng", "hội tụ"]}
+{"question": "Naive Bayes classifier dựa trên giả thiết gì?", "expected_pages": [145, 146], "expected_keywords": ["naive Bayes", "NBC", "độc lập", "phân loại"]}
+{"question": "Gaussian, multinomial và Bernoulli Naive Bayes khác nhau ở điểm nào?", "expected_pages": [147, 148], "expected_keywords": ["Gaussian naive Bayes", "Multinomial", "Bernoulli"]}
+{"question": "Gradient descent là gì và dùng để tìm cực tiểu như thế nào?", "expected_pages": [158, 159, 160], "expected_keywords": ["gradient descent", "cực tiểu", "learning rate", "đạo hàm"]}
+{"question": "Learning rate ảnh hưởng thế nào đến quá trình hội tụ của gradient descent?", "expected_pages": [160, 161, 162, 163], "expected_keywords": ["learning rate", "tốc độ học", "hội tụ", "gradient descent"]}
+{"question": "Gradient descent với momentum hoạt động như thế nào?", "expected_pages": [167, 168, 169, 170], "expected_keywords": ["momentum", "gradient descent", "Nesterov"]}
+{"question": "Stochastic gradient descent khác batch gradient descent ở điểm nào?", "expected_pages": [171, 172, 173], "expected_keywords": ["stochastic gradient descent", "SGD", "batch", "epoch"]}
+{"question": "Hồi quy logistic dùng sigmoid để ước lượng xác suất như thế nào?", "expected_pages": [185, 186, 187, 191], "expected_keywords": ["logistic regression", "sigmoid", "probability", "hồi quy logistic"]}
+{"question": "Hồi quy logistic với weight decay cập nhật trọng số ra sao?", "expected_pages": [190, 191], "expected_keywords": ["weight decay", "logistic regression", "SGD", "lambda"]}
+{"question": "Hồi quy softmax giải bài toán phân loại nhiều lớp như thế nào?", "expected_pages": [201, 202, 203], "expected_keywords": ["softmax", "multi-class", "hồi quy softmax"]}
+{"question": "Perceptron learning algorithm giải bài toán phân loại tuyến tính như thế nào?", "expected_pages": [175, 176, 177, 178], "expected_keywords": ["perceptron", "linearly separable", "PLA"]}
+{"question": "Mạng neuron đa tầng lan truyền thuận qua các tầng như thế nào?", "expected_pages": [217, 218, 219, 220], "expected_keywords": ["neural network", "activation function", "tầng", "a(l)"]}
+{"question": "Backpropagation trong mạng neuron đa tầng được dùng để tính gì?", "expected_pages": [221, 222, 223, 224], "expected_keywords": ["backpropagation", "lan truyền ngược", "gradient", "hàm mất mát"]}
+{"question": "Dropout giúp hạn chế overfitting trong mạng neuron như thế nào?", "expected_pages": [230, 231], "expected_keywords": ["dropout", "overfitting", "neural network"]}
+{"question": "Hệ thống gợi ý dựa trên lọc cộng tác lân cận hoạt động ra sao?", "expected_pages": [245, 246, 247], "expected_keywords": ["collaborative filtering", "lọc cộng tác", "similarity"]}
+{"question": "Matrix factorization trong hệ thống gợi ý phân rã ma trận tiện ích như thế nào?", "expected_pages": [257, 258, 259, 260], "expected_keywords": ["matrix factorization", "collaborative filtering", "ma trận tiện ích"]}
+{"question": "PCA là gì và mục tiêu của phân tích thành phần chính là gì?", "expected_pages": [275, 276, 277, 278], "expected_keywords": ["PCA", "principal component analysis", "phương sai", "thành phần chính"]}
+{"question": "Các bước thực hiện PCA gồm những gì?", "expected_pages": [279, 280], "expected_keywords": ["PCA", "vector trung bình", "ma trận hiệp phương sai", "trị riêng"]}
+{"question": "LDA tìm phương chiếu dữ liệu phục vụ phân loại như thế nào?", "expected_pages": [289, 290, 291, 292], "expected_keywords": ["LDA", "linear discriminant analysis", "phân tích biệt thức tuyến tính"]}
+{"question": "SVM là gì và ý tưởng lề margin lớn nhất có ý nghĩa gì?", "expected_pages": [350, 351, 352, 353], "expected_keywords": ["SVM", "support vector machine", "margin", "maximum margin"]}
+{"question": "Bài toán tối ưu của SVM được xây dựng từ margin như thế nào?", "expected_pages": [352, 353, 354], "expected_keywords": ["SVM", "margin", "bài toán tối ưu", "quadratic programming"]}
+{"question": "Kernel SVM dùng kernel trick để tránh tính trực tiếp ánh xạ phi như thế nào?", "expected_pages": [378, 379, 380, 381, 382], "expected_keywords": ["kernel", "kernel trick", "SVM", "Phi"]}

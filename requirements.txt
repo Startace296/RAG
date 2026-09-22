@@ -1,0 +1,6 @@
+faiss-cpu
+PyMuPDF
+python-dotenv
+sentence-transformers
+torch
+transformers
