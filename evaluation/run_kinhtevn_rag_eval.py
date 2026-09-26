@@ -1,6 +1,5 @@
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -10,9 +9,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.app.main import DEFAULT_STORAGE_DIR, _resolve_path  # noqa: E402
-from src.app.rag_service import DEFAULT_LOCAL_LLM_MODEL, NO_CONTEXT_ANSWER, RagService  # noqa: E402
-from src.embeddings import DEFAULT_EMBEDDING_MODEL  # noqa: E402
+from src.app.rag_service import NO_CONTEXT_ANSWER, RagService  # noqa: E402
+from src.paths import DEFAULT_STORAGE_DIR, resolve_path  # noqa: E402
 
 
 DEFAULT_QUESTIONS = PROJECT_ROOT / "evaluation" / "kinhtevn_questions.jsonl"
@@ -34,25 +32,7 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def build_service(pdf_path: Path, storage_dir: Path) -> RagService:
-    return RagService(
-        pdf_path=pdf_path,
-        storage_dir=storage_dir,
-        embedding_model=os.getenv("EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL),
-        embedding_document_prefix=os.getenv("EMBEDDING_DOCUMENT_PREFIX", ""),
-        embedding_query_prefix=os.getenv("EMBEDDING_QUERY_PREFIX", ""),
-        top_k=int(os.getenv("TOP_K", "5")),
-        chunk_size=int(os.getenv("CHUNK_SIZE", "300")),
-        chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "50")),
-        chunking_strategy=os.getenv("CHUNKING_STRATEGY", "recursive"),
-        min_chunk_size=int(os.getenv("MIN_CHUNK_SIZE", "50")),
-        vector_index_type=os.getenv("VECTOR_INDEX_TYPE", "flat"),
-        faiss_hnsw_m=int(os.getenv("FAISS_HNSW_M", "32")),
-        faiss_ivf_nlist=int(os.getenv("FAISS_IVF_NLIST", "64")),
-        faiss_ivf_nprobe=int(os.getenv("FAISS_IVF_NPROBE", "8")),
-        similarity_threshold=float(os.getenv("SIMILARITY_THRESHOLD", "0.25")),
-        max_context_chars=int(os.getenv("MAX_CONTEXT_CHARS", "12000")),
-        llm_model=os.getenv("LOCAL_LLM_MODEL", DEFAULT_LOCAL_LLM_MODEL),
-    )
+    return RagService.from_env(pdf_path=pdf_path, storage_dir=storage_dir)
 
 
 def source_hits(sources: list[dict[str, Any]], question: dict[str, Any]) -> dict[str, Any]:
@@ -127,6 +107,9 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def main() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
     parser = argparse.ArgumentParser(description="Run KinhteVN questions through RagService.answer")
     parser.add_argument("--pdf", type=Path, default=PROJECT_ROOT / "data" / "KinhteVN.pdf")
     parser.add_argument("--storage-dir", type=Path, default=DEFAULT_STORAGE_DIR)
@@ -138,8 +121,8 @@ def main() -> None:
     parser.add_argument("--rebuild", action="store_true")
     args = parser.parse_args()
 
-    pdf_path = _resolve_path(args.pdf)
-    storage_dir = _resolve_path(args.storage_dir)
+    pdf_path = resolve_path(args.pdf)
+    storage_dir = resolve_path(args.storage_dir)
     questions = load_jsonl(args.questions)
     if args.include_answer_checks:
         questions.extend(load_jsonl(args.answer_checks))
@@ -147,7 +130,10 @@ def main() -> None:
         questions = questions[: args.limit]
 
     service = build_service(pdf_path, storage_dir)
-    if args.rebuild:
+    mismatches = service.index_mismatches() if service.store.exists() else {}
+    if args.rebuild or not service.store.exists() or mismatches:
+        if mismatches:
+            print(f"Rebuilding stale index: {sorted(mismatches)}", flush=True)
         service.rebuild_index()
 
     rows = []

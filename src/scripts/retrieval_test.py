@@ -4,25 +4,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from ..chunking import split_documents
+from ..chunking import SUPPORTED_CHUNKING_STRATEGIES, split_documents
 from ..documents import load_pdf
 from ..embeddings import DEFAULT_EMBEDDING_MODEL, EmbeddingService
+from ..paths import PROJECT_ROOT, default_pdf_path, resolve_path
 from ..retrieval import VectorStore
-
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-
-def _default_pdf_path() -> Path:
-    default_path = PROJECT_ROOT / "data" / "document.pdf"
-    if default_path.exists():
-        return default_path
-
-    pdf_files = sorted((PROJECT_ROOT / "data").glob("*.pdf"))
-    if pdf_files:
-        return pdf_files[0]
-
-    return default_path
 
 
 def _print_result(rank: int, result: dict[str, object]) -> None:
@@ -49,7 +35,7 @@ def main() -> None:
     parser.add_argument(
         "--pdf",
         type=Path,
-        default=_default_pdf_path(),
+        default=default_pdf_path(),
         help="Path to the PDF file",
     )
     parser.add_argument(
@@ -73,15 +59,7 @@ def main() -> None:
     parser.add_argument(
         "--chunking-strategy",
         default=os.getenv("CHUNKING_STRATEGY", "recursive"),
-        choices=[
-            "fixed_word",
-            "sentence",
-            "paragraph",
-            "recursive",
-            "semantic",
-            "parent_child",
-            "sliding_window",
-        ],
+        choices=sorted(SUPPORTED_CHUNKING_STRATEGIES),
         help="Chunking strategy to use",
     )
     parser.add_argument(
@@ -108,7 +86,7 @@ def main() -> None:
     parser.add_argument(
         "--vector-index-type",
         default=os.getenv("VECTOR_INDEX_TYPE", "flat"),
-        choices=["flat", "hnsw", "ivf"],
+        choices=sorted(VectorStore.SUPPORTED_INDEX_TYPES),
         help="FAISS index type to use",
     )
     parser.add_argument(
@@ -131,8 +109,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    print(f"Loading PDF: {args.pdf}")
-    pages = load_pdf(args.pdf)
+    pdf_path = resolve_path(args.pdf)
+    print(f"Loading PDF: {pdf_path}")
+    pages = load_pdf(pdf_path)
     print(f"Loaded {len(pages)} pages with text.")
 
     chunks = split_documents(

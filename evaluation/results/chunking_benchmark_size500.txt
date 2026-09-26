@@ -1,0 +1,8 @@
+PDF: KinhteVN.pdf | questions: kinhtevn_questions.jsonl (29)
+Consider using the pymupdf_layout package for a greatly improved page layout analysis.
+strategy        chunk_size  overlap  chunks  queries   hit@5  precision@5  recall@5     mrr  ndcg@5  build_s  retrieval_ms
+--------------  ----------  -------  ------  -------  ------  -----------  --------  ------  ------  -------  ------------
+fixed_word             500       50      57       29  0.8966       0.2138    0.8966  0.7483  0.7823   6.9111        0.1194
+recursive              500       50      59       29  0.8621       0.2069    0.8621  0.7270  0.7620   7.7847        0.1229
+parent_child           500       50      61       29  0.8966       0.2276    0.8966  0.7483  0.7742   7.4402        0.1255
+sliding_window         500       50      57       29  0.8966       0.2138    0.8966  0.7483  0.7823   7.0898        0.1264

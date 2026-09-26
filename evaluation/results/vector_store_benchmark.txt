@@ -1,0 +1,8 @@
+WARNING clustering 100 points to 64 centroids: please provide at least 2496 training points
+PDF: KinhteVN.pdf | questions: kinhtevn_questions.jsonl (29) | chunking: parent_child | model: intfloat/multilingual-e5-small
+Consider using the pymupdf_layout package for a greatly improved page layout analysis.
+index_type  chunks  dimension  queries   hit@5  precision@5  recall@5     mrr  ndcg@5  build_s  retrieval_ms
+----------  ------  ---------  -------  ------  -----------  --------  ------  ------  -------  ------------
+flat           100        384       29  0.8966       0.2759    0.8793  0.6661  0.7072   0.0009        0.0533
+hnsw           100        384       29  0.8966       0.2759    0.8793  0.6661  0.7072   0.0089        0.0900
+ivf            100        384       29  0.8621       0.2690    0.8448  0.6506  0.6879   0.0056        0.0738

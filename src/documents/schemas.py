@@ -7,6 +7,7 @@ class DocumentMetadata(TypedDict, total=False):
 
     page_count: int
     image_count: int
+    skipped_image_count: int
     image_output_dir: str | None
     file_size_bytes: int
     document_id_strategy: str
@@ -73,6 +74,7 @@ class PageMetadata(TypedDict, total=False):
     searchable_char_count: int
     searchable_word_count: int
     image_count: int
+    skipped_image_count: int
     image_text_count: int
     page_width: float
     page_height: float

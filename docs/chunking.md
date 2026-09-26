@@ -6,15 +6,20 @@ Tài liệu này mô tả vấn đề chunking trong RAG và cách project đã 
 
 Chunking quyết định đơn vị nội dung được đưa vào embedding và vector store. Nếu chunking kém, retrieval có thể lấy sai hoặc thiếu ngữ cảnh dù embedding model tốt.
 
-Các vấn đề thường gặp:
+Các vấn đề thường gặp và cách xử lý:
 
-- Cắt ngang câu hoặc đoạn, làm mất ý nghĩa.
-- Chunk quá nhỏ khiến câu trả lời thiếu context.
-- Chunk quá lớn khiến embedding bị loãng và retrieval kém chính xác.
-- Overlap quá nhiều gây trùng lặp kết quả và tăng kích thước index.
-- Không giữ thông tin truy vết như `chunk_id`, `token_count`, `chunking_strategy`.
-- Không tận dụng cấu trúc tự nhiên của tài liệu như đoạn, câu, heading.
-- Bảng, công thức, code, caption ảnh có thể bị phá vỡ khi chỉ split bằng whitespace.
+| Triệu chứng | Nguyên nhân thường gặp | Hướng xử lý |
+| --- | --- | --- |
+| Chunk kết thúc giữa câu hoặc ý | Dùng `fixed_word`/`sliding_window`, hoặc một câu dài vượt `CHUNK_SIZE` nên phải fallback sang tách theo từ | Thử `recursive`, `sentence` hoặc `paragraph`; kiểm tra lại chunk dài bất thường sau khi trích xuất PDF |
+| Kết quả tìm kiếm thiếu phần giải thích cần thiết | Chunk quá nhỏ, hoặc thông tin bổ trợ nằm ở chunk kế tiếp | Tăng `CHUNK_SIZE`, thử tăng `CHUNK_OVERLAP`, hoặc dùng `parent_child` để retrieve child nhưng đưa thêm parent vào context |
+| Kết quả tìm kiếm trộn nhiều chủ đề | Chunk quá lớn hoặc ranh giới đoạn/câu trong text không còn rõ | Giảm `CHUNK_SIZE`; kiểm tra text đã trích xuất; cân nhắc `semantic` khi tài liệu đổi chủ đề thường xuyên |
+| Có nhiều kết quả gần như trùng nhau | `CHUNK_OVERLAP` lớn hoặc dùng sliding window trên tài liệu dài | Giảm overlap; kiểm tra số chunk và chất lượng top-k sau khi đổi cấu hình |
+| Tiếng Việt bị chia câu không hợp lý | Sentence splitter hiện dựa vào dấu `.`, `!`, `?` theo sau bởi khoảng trắng; PDF có thể làm mất dấu câu hoặc ngắt dòng | Kiểm tra text đầu ra từ loader trước; chọn strategy phù hợp với cấu trúc thực tế thay vì chỉ dựa vào dấu câu |
+| Heading, bảng, công thức hoặc code bị tách khỏi nội dung liên quan | Các cấu trúc này không luôn được nhận diện như boundary riêng khi split text | Cải thiện/chuẩn hóa text trước khi chunk; giữ heading hoặc metadata cấu trúc cùng nội dung; kiểm tra thủ công các tài liệu có bảng và công thức |
+| Ngữ cảnh bị ngắt ở cuối mỗi trang | `split_documents` tạo chunk bên trong từng trang, không ghép text giữa hai trang | Giữ metadata trang để truy vết; nếu câu hoặc bảng thường xuyên chạy qua trang, xử lý/ghép các trang liên quan trước khi chunk |
+| Đổi cấu hình nhưng kết quả không thay đổi | Vector index cũ vẫn chứa chunk đã tạo theo cấu hình trước | Rebuild index sau khi đổi strategy, size hoặc overlap |
+
+Lưu ý: `CHUNK_SIZE` và `CHUNK_OVERLAP` trong cấu hình hiện được tính theo **số từ**, không phải token. Nên đánh giá bằng câu hỏi có ground truth và kiểm tra cả chất lượng retrieval, số chunk, kích thước index, thay vì chọn tham số chỉ theo cảm giác.
 
 ## Cấu Hình
 
@@ -287,7 +292,7 @@ Nên dùng khi:
 
 ## Đánh Giá Định Lượng Cần Bổ Sung
 
-Project có benchmark runner ở `src/chunking_benchmark.py`. Benchmark đọc câu hỏi từ `evaluation/chunking_questions.jsonl` và đo:
+Project có benchmark runner ở `src/chunking_benchmark.py`. Benchmark đọc câu hỏi từ file trong biến `EVALUATION_QUESTIONS` của `.env`, mặc định là `evaluation/kinhtevn_questions.jsonl` cho `KinhteVN.pdf`. Bộ `evaluation/chunking_questions.jsonl` là câu hỏi về tài liệu học máy cũ, chỉ dùng khi PDF đầu vào là tài liệu đó. Benchmark đo:
 
 - `Recall@k`: câu hỏi có retrieve được trang/chunk đúng trong top-k không.
 - `MRR`: chunk đúng xuất hiện ở rank bao nhiêu.
@@ -335,7 +340,13 @@ Format câu hỏi benchmark:
 {"question": "Gradient descent là gì?", "expected_pages": [120, 121], "expected_keywords": ["gradient descent"]}
 ```
 
-Nếu `expected_pages` chưa biết, có thể dùng `expected_keywords`, nhưng kết quả sẽ chỉ là đánh giá gần đúng. Muốn số liệu đáng tin hơn cần điền trang/chunk đúng sau khi kiểm tra tài liệu.
+Quy tắc tính một chunk là liên quan (`src/benchmarks/metrics.py`):
+
+- Có cả `expected_pages` và `expected_keywords`: chunk phải nằm ở trang nhãn **và** chứa ít nhất một từ khóa. Chunk đúng trang nhưng nói chuyện khác không được tính.
+- Chỉ có `expected_pages`: chunk phải nằm ở trang nhãn.
+- Chỉ có `expected_keywords`: chunk phải chứa từ khóa. Đây chỉ là đánh giá gần đúng.
+
+`recall@k` là tỷ lệ trang nhãn được phủ bởi ít nhất một chunk liên quan. `nDCG@k` dùng số trang nhãn làm số kết quả lý tưởng, nên bỏ sót trang nhãn sẽ làm giảm điểm.
 
 ## Kết Luận
 

@@ -8,7 +8,9 @@ Mỗi vector tương ứng đúng một chunk trong metadata:
 
 - `index.faiss`: FAISS index chứa embedding đã normalize.
 - `metadata.json`: thông tin chunk như `chunk_id`, `document_id`, `source`, `page`, `chunk_index`, `section_title`, `parent_text`.
-- `index_config.json`: cấu hình index đã build như `index_type`, `hnsw_m`, `ivf_nlist`, `ivf_nprobe`.
+- `index_config.json`: cấu hình index đã build như `index_type`, `hnsw_m`, `ivf_nlist`, `ivf_nprobe`, cùng khối `pipeline` ghi PDF nguồn (tên và SHA-256), model embedding, prefix và tham số chunking.
+
+Khi chạy `python -m src.main`, nếu bất kỳ giá trị nào trong `index_config.json` khác với `.env` hiện tại thì index được build lại tự động. Index cũ không có khối `pipeline` cũng được build lại.
 
 Embedding được normalize trong `EmbeddingService`, nên FAISS dùng inner product để tính tương đương cosine similarity.
 

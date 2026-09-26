@@ -1,5 +1,4 @@
 import argparse
-import json
 import os
 import time
 from pathlib import Path
@@ -11,31 +10,13 @@ from ..chunking import split_documents
 from ..documents import load_pdf
 from ..embeddings import (
     DEFAULT_EMBEDDING_BENCHMARK_ALIASES,
+    EmbeddingService,
     resolve_embedding_model,
 )
-from ..embeddings import EmbeddingService
+from ..paths import PROJECT_ROOT, default_pdf_path, default_questions_path, resolve_path
 from ..retrieval import VectorStore
+from .common import mean_metrics, metric_headers, print_table, require_inputs
 from .metrics import evaluate_results, mean
-
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_EVALUATION_FILE = PROJECT_ROOT / "evaluation" / "chunking_questions.jsonl"
-
-
-def _default_pdf_path() -> Path:
-    configured_path = os.getenv("PDF_PATH")
-    if configured_path:
-        path = PROJECT_ROOT / configured_path
-        if path.is_dir():
-            pdf_files = sorted(path.glob("*.pdf"))
-            if pdf_files:
-                return pdf_files[0]
-        return path
-
-    pdf_files = sorted((PROJECT_ROOT / "data").glob("*.pdf"))
-    if pdf_files:
-        return pdf_files[0]
-    return PROJECT_ROOT / "data" / "document.pdf"
 
 
 def _configured_models() -> list[str]:
@@ -43,20 +24,6 @@ def _configured_models() -> list[str]:
     if not configured.strip():
         return DEFAULT_EMBEDDING_BENCHMARK_ALIASES
     return [item.strip() for item in configured.split(",") if item.strip()]
-
-
-def _load_questions(path: Path) -> list[dict[str, Any]]:
-    questions: list[dict[str, Any]] = []
-    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-
-        item = json.loads(line)
-        if not item.get("question"):
-            raise ValueError(f"Missing question at {path}:{line_number}")
-        questions.append(item)
-    return questions
 
 
 def _safe_model_dir_name(alias: str) -> str:
@@ -87,14 +54,9 @@ def _run_model(
     store.build(document_embeddings, chunks)
     build_seconds = time.perf_counter() - build_started
 
-    hits: list[float] = []
-    precisions: list[float] = []
-    recalls: list[float] = []
-    mrrs: list[float] = []
-    ndcgs: list[float] = []
+    per_question: list[dict[str, float]] = []
     query_encode_seconds: list[float] = []
     retrieval_seconds: list[float] = []
-
     for question in questions:
         encode_started = time.perf_counter()
         query_embedding = embedder.embed_query(str(question["question"]))
@@ -103,24 +65,14 @@ def _run_model(
         retrieval_started = time.perf_counter()
         results = store.search(query_embedding, top_k=args.top_k)
         retrieval_seconds.append(time.perf_counter() - retrieval_started)
-
-        metrics = evaluate_results(results, question, args.top_k)
-        hits.append(metrics["hit"])
-        precisions.append(metrics["precision"])
-        recalls.append(metrics["recall"])
-        mrrs.append(metrics["mrr"])
-        ndcgs.append(metrics["ndcg"])
+        per_question.append(evaluate_results(results, question, args.top_k))
 
     return {
         "model": spec.alias,
         "dimension": spec.dimension or int(document_embeddings.shape[1]),
         "chunks": len(chunks),
         "queries": len(questions),
-        f"hit@{args.top_k}": mean(hits),
-        f"precision@{args.top_k}": mean(precisions),
-        f"recall@{args.top_k}": mean(recalls),
-        "mrr": mean(mrrs),
-        f"ndcg@{args.top_k}": mean(ndcgs),
+        **mean_metrics(per_question, args.top_k),
         "load_s": load_seconds,
         "build_s": build_seconds,
         "query_ms": mean(query_encode_seconds) * 1000,
@@ -128,58 +80,12 @@ def _run_model(
     }
 
 
-def _print_table(rows: list[dict[str, Any]], top_k: int) -> None:
-    headers = [
-        "model",
-        "dimension",
-        "chunks",
-        "queries",
-        f"hit@{top_k}",
-        f"precision@{top_k}",
-        f"recall@{top_k}",
-        "mrr",
-        f"ndcg@{top_k}",
-        "load_s",
-        "build_s",
-        "query_ms",
-        "retrieval_ms",
-    ]
-
-    formatted_rows: list[dict[str, str]] = []
-    for row in rows:
-        formatted_row: dict[str, str] = {}
-        for header in headers:
-            value = row[header]
-            formatted_row[header] = f"{value:.4f}" if isinstance(value, float) else str(value)
-        formatted_rows.append(formatted_row)
-
-    widths = {
-        header: max(len(header), *(len(row[header]) for row in formatted_rows))
-        for header in headers
-    }
-
-    def format_row(row: dict[str, str]) -> str:
-        cells = []
-        for header in headers:
-            value = row[header]
-            if header == "model":
-                cells.append(value.ljust(widths[header]))
-            else:
-                cells.append(value.rjust(widths[header]))
-        return "  ".join(cells)
-
-    print(format_row({header: header for header in headers}))
-    print("  ".join("-" * widths[header] for header in headers))
-    for row in formatted_rows:
-        print(format_row(row))
-
-
 def main() -> None:
     load_dotenv(PROJECT_ROOT / ".env")
 
     parser = argparse.ArgumentParser(description="Benchmark embedding models")
-    parser.add_argument("--pdf", type=Path, default=_default_pdf_path())
-    parser.add_argument("--questions", type=Path, default=DEFAULT_EVALUATION_FILE)
+    parser.add_argument("--pdf", type=Path, default=default_pdf_path())
+    parser.add_argument("--questions", type=Path, default=default_questions_path())
     parser.add_argument("--top-k", type=int, default=int(os.getenv("TOP_K", "5")))
     parser.add_argument("--chunk-size", type=int, default=int(os.getenv("CHUNK_SIZE", "300")))
     parser.add_argument(
@@ -199,16 +105,15 @@ def main() -> None:
     parser.add_argument("--models", nargs="+", default=_configured_models())
     args = parser.parse_args()
 
-    if not args.pdf.exists():
-        raise SystemExit(f"PDF not found: {args.pdf}")
-    if not args.questions.exists():
-        raise SystemExit(f"Question file not found: {args.questions}")
+    pdf_path = resolve_path(args.pdf)
+    questions_path = resolve_path(args.questions)
+    questions = require_inputs(pdf_path, questions_path)
+    print(
+        f"PDF: {pdf_path.name} | questions: {questions_path.name} ({len(questions)}) "
+        f"| chunking: {args.chunking_strategy}"
+    )
 
-    questions = _load_questions(args.questions)
-    if not questions:
-        raise SystemExit(f"No benchmark questions found: {args.questions}")
-
-    pages = load_pdf(args.pdf)
+    pages = load_pdf(pdf_path)
     chunks = split_documents(
         pages,
         chunk_size=args.chunk_size,
@@ -218,7 +123,12 @@ def main() -> None:
     )
 
     rows = [_run_model(model, chunks, questions, args) for model in args.models]
-    _print_table(rows, args.top_k)
+    print_table(
+        rows,
+        ["model", "dimension", "chunks", "queries"]
+        + metric_headers(args.top_k)
+        + ["load_s", "build_s", "query_ms", "retrieval_ms"],
+    )
 
 
 if __name__ == "__main__":

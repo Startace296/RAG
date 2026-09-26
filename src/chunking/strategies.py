@@ -1,4 +1,5 @@
 import re
+from dataclasses import dataclass
 from hashlib import sha256
 from typing import Any, Literal, Mapping, TypedDict
 
@@ -41,10 +42,13 @@ class TextChunk(TypedDict, total=False):
     text: str
     page: int
     source: str
+    page_chunk_index: int
+    document_chunk_index: int
     chunk_index: int
     document_id: str
     start_word: int
     end_word: int
+    word_count: int
     token_count: int
     char_count: int
     section_title: str
@@ -54,6 +58,15 @@ class TextChunk(TypedDict, total=False):
     image_refs: list[ChunkImageRef]
 
 
+@dataclass(frozen=True)
+class _ChunkPiece:
+    """Chunk text produced by a strategy, plus its parent when there is one."""
+
+    text: str
+    parent_text: str = ""
+    parent_index: int | None = None
+
+
 def split_documents(
     documents: list[Mapping[str, Any]],
     chunk_size: int = 300,
@@ -61,63 +74,67 @@ def split_documents(
     chunking_strategy: str = "recursive",
     min_chunk_size: int = 50,
 ) -> list[TextChunk]:
-    """Split page documents into chunks using the selected strategy.
+    """Split normalized page-level documents into chunks.
 
-    Chunks are created inside each page only, so text from different pages is
-    never mixed together.
+    Each input item is expected to represent one normalized page record, such
+    as ``DocumentPage.to_chunk_input()``. Chunks are created inside each page
+    only, so text from different pages is never mixed together.
     """
     _validate_chunking_args(chunk_size, chunk_overlap, min_chunk_size)
     strategy = _normalize_strategy(chunking_strategy)
 
     chunks: list[TextChunk] = []
-    for document in documents:
-        text = str(document["text"]).strip()
+    document_chunk_indexes: dict[str, int] = {}
+    for page_document in documents:
+        text = str(page_document["text"]).strip()
         if not text:
             continue
 
-        if strategy in {"fixed_word", "sliding_window"}:
-            text_chunks = _split_words(text.split(), chunk_size, chunk_overlap)
-        elif strategy == "parent_child":
-            text_chunks = _split_parent_child(
+        if strategy == "parent_child":
+            pieces = _split_parent_child(
                 text=text,
                 child_size=chunk_size,
                 child_overlap=chunk_overlap,
             )
         else:
-            units = _split_text_by_strategy(text, strategy, chunk_size)
-            if strategy == "semantic":
-                text_chunks = _split_semantic_units(
-                    units=units,
-                    chunk_size=chunk_size,
-                    min_chunk_size=min_chunk_size,
-                )
+            if strategy in {"fixed_word", "sliding_window"}:
+                text_chunks = _split_words(text.split(), chunk_size, chunk_overlap)
             else:
-                text_chunks = _pack_units(units, chunk_size, chunk_overlap, min_chunk_size)
+                units = _split_text_by_strategy(text, strategy, chunk_size)
+                if strategy == "semantic":
+                    text_chunks = _split_semantic_units(
+                        units=units,
+                        chunk_size=chunk_size,
+                        min_chunk_size=min_chunk_size,
+                    )
+                else:
+                    text_chunks = _pack_units(units, chunk_size, chunk_overlap, min_chunk_size)
+            pieces = [_ChunkPiece(text=chunk_text) for chunk_text in text_chunks]
 
         page_words = text.split()
         search_start_word = 0
-        for chunk_index, chunk_text in enumerate(text_chunks):
-            if strategy == "parent_child":
-                parent_text, child_text = _unpack_parent_child(chunk_text)
-            else:
-                parent_text = ""
-                child_text = chunk_text
-
+        document_key = _document_counter_key(page_document)
+        for page_chunk_index, piece in enumerate(pieces):
+            child_text = piece.text
             chunk_words = child_text.split()
+            document_chunk_index = document_chunk_indexes.get(document_key, 0)
             start_word = _find_word_offset(page_words, chunk_words, search_start_word)
             end_word = start_word + len(chunk_words)
             search_start_word = max(start_word + 1, end_word - chunk_overlap)
             chunks.append(
                 _build_chunk(
-                    document=document,
+                    document=page_document,
                     text=child_text,
-                    chunk_index=chunk_index,
+                    page_chunk_index=page_chunk_index,
+                    document_chunk_index=document_chunk_index,
                     chunking_strategy=strategy,
                     start_word=start_word,
                     end_word=end_word,
-                    parent_text=parent_text,
+                    parent_text=piece.parent_text,
+                    parent_index=piece.parent_index,
                 )
             )
+            document_chunk_indexes[document_key] = document_chunk_index + 1
 
     return chunks
 
@@ -299,34 +316,23 @@ def _split_parent_child(
     child_size: int,
     child_overlap: int,
     parent_size_multiplier: int = 2,
-) -> list[str]:
+) -> list[_ChunkPiece]:
     parent_size = child_size * parent_size_multiplier
     parent_chunks = _split_words(text.split(), parent_size, child_overlap)
-    packed_chunks: list[str] = []
+    pieces: list[_ChunkPiece] = []
 
     for parent_index, parent_text in enumerate(parent_chunks):
         child_chunks = _split_words(parent_text.split(), child_size, child_overlap)
         for child_text in child_chunks:
-            packed_chunks.append(_pack_parent_child(parent_index, parent_text, child_text))
+            pieces.append(
+                _ChunkPiece(
+                    text=child_text,
+                    parent_text=parent_text,
+                    parent_index=parent_index,
+                )
+            )
 
-    return packed_chunks
-
-
-def _pack_parent_child(parent_index: int, parent_text: str, child_text: str) -> str:
-    return f"PARENT_INDEX:{parent_index}\nPARENT_TEXT:{parent_text}\nCHILD_TEXT:{child_text}"
-
-
-def _unpack_parent_child(packed_text: str) -> tuple[str, str]:
-    parent_marker = "\nPARENT_TEXT:"
-    child_marker = "\nCHILD_TEXT:"
-    if parent_marker not in packed_text or child_marker not in packed_text:
-        return "", packed_text
-
-    parent_start = packed_text.index(parent_marker) + len(parent_marker)
-    child_start = packed_text.index(child_marker)
-    parent_text = packed_text[parent_start:child_start].strip()
-    child_text = packed_text[child_start + len(child_marker) :].strip()
-    return parent_text, child_text
+    return pieces
 
 
 def _lexical_similarity(left: str, right: str) -> float:
@@ -368,18 +374,20 @@ def _overlap_tail(units: list[str], chunk_overlap: int) -> list[str]:
 def _build_chunk(
     document: Mapping[str, Any],
     text: str,
-    chunk_index: int,
+    page_chunk_index: int,
+    document_chunk_index: int,
     chunking_strategy: ChunkingStrategy,
     start_word: int,
     end_word: int,
     parent_text: str = "",
+    parent_index: int | None = None,
 ) -> TextChunk:
     words = text.split()
     document_id = str(document.get("document_id", ""))
     source = str(document["source"])
     page = int(document["page"])
-    chunk_id = _build_chunk_id(document_id, source, page, chunk_index, text)
-    parent_id = _build_parent_id(document_id, source, page, chunk_index, parent_text)
+    chunk_id = _build_chunk_id(document_id, source, page, page_chunk_index, text)
+    parent_id = _build_parent_id(document_id, source, page, parent_index, parent_text)
     image_refs = _build_image_refs(document)
     section_title = _extract_section_title(document, text)
 
@@ -388,10 +396,13 @@ def _build_chunk(
         "text": text,
         "page": page,
         "source": source,
-        "chunk_index": chunk_index,
+        "page_chunk_index": page_chunk_index,
+        "document_chunk_index": document_chunk_index,
+        "chunk_index": page_chunk_index,
         "document_id": document_id,
         "start_word": start_word,
         "end_word": end_word,
+        "word_count": len(words),
         "token_count": len(words),
         "char_count": len(text),
         "section_title": section_title,
@@ -400,6 +411,13 @@ def _build_chunk(
         "parent_text": parent_text,
         "image_refs": image_refs,
     }
+
+
+def _document_counter_key(document: Mapping[str, Any]) -> str:
+    document_id = str(document.get("document_id", "")).strip()
+    if document_id:
+        return f"document_id:{document_id}"
+    return f"source:{document.get('source', '')}"
 
 
 def _build_image_refs(document: Mapping[str, Any]) -> list[ChunkImageRef]:
@@ -479,11 +497,16 @@ def _build_chunk_id(
 
 
 def _build_parent_id(
-    document_id: str, source: str, page: int, chunk_index: int, parent_text: str
+    document_id: str,
+    source: str,
+    page: int,
+    parent_index: int | None,
+    parent_text: str,
 ) -> str:
-    if not parent_text:
+    """Build an ID shared by every child chunk of the same parent."""
+    if not parent_text or parent_index is None:
         return ""
-    raw_id = f"{document_id}|{source}|{page}|parent|{chunk_index}|{parent_text[:120]}"
+    raw_id = f"{document_id}|{source}|{page}|parent|{parent_index}|{parent_text[:120]}"
     return sha256(raw_id.encode("utf-8")).hexdigest()[:16]
 
 

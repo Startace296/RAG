@@ -1,0 +1,8 @@
+PDF: KinhteVN.pdf | questions: kinhtevn_questions.jsonl (29) | chunking: parent_child
+Consider using the pymupdf_layout package for a greatly improved page layout analysis.
+model                dimension  chunks  queries   hit@5  precision@5  recall@5     mrr  ndcg@5  load_s  build_s  query_ms  retrieval_ms
+-------------------  ---------  ------  -------  ------  -----------  --------  ------  ------  ------  -------  --------  ------------
+miniLM-multilingual        384     100       29  0.7931       0.2138    0.7759  0.5805  0.6156  2.8558   2.9081   19.0217        0.1395
+mpnet-multilingual         768     100       29  0.8276       0.2207    0.8103  0.5816  0.6261  3.9303   9.4021   52.5484        0.1633
+e5-small                   384     100       29  0.8966       0.2759    0.8793  0.6661  0.7072  2.6662   9.1410   23.8333        0.1588
+e5-base                    768     100       29  0.9655       0.3103    0.9310  0.6851  0.7250  4.4049  26.2316   48.6065        0.1622

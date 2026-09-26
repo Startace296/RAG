@@ -11,6 +11,8 @@ src/
   retrieval/    FAISS vector store and search result metadata
   benchmarks/   Offline benchmark runners
   scripts/      Manual utility scripts
+  paths.py      Shared project paths and default PDF / question file lookup
+tests/          Unit tests (python -m unittest discover -s tests -t .)
 ```
 
 ## Layer Mapping

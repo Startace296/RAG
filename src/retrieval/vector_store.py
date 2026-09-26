@@ -25,9 +25,12 @@ class SearchResult(TypedDict, total=False):
     text: str
     source: str
     page: int
+    page_chunk_index: int
+    document_chunk_index: int
     chunk_index: int
     similarity_score: float
     document_id: str
+    word_count: int
     token_count: int
     char_count: int
     start_word: int
@@ -51,9 +54,17 @@ class VectorStore:
         hnsw_m: int = 32,
         ivf_nlist: int = 64,
         ivf_nprobe: int = 8,
+        pipeline_config: Mapping[str, Any] | None = None,
     ):
-        """Create a vector store rooted at a local directory."""
+        """Create a vector store rooted at a local directory.
+
+        Args:
+            pipeline_config: Settings used to produce the vectors, such as the
+                embedding model and chunking parameters. They are saved next to
+                the index so a later run can detect a stale index.
+        """
         self.storage_dir = Path(storage_dir)
+        self.pipeline_config = dict(pipeline_config) if pipeline_config else {}
         self.index_path = self.storage_dir / "index.faiss"
         self.metadata_path = self.storage_dir / "metadata.json"
         self.config_path = self.storage_dir / "index_config.json"
@@ -93,7 +104,12 @@ class VectorStore:
                 "source": str(chunk["source"]),
                 "page": int(chunk["page"]),
                 "chunk_index": int(chunk["chunk_index"]),
+                "page_chunk_index": int(chunk.get("page_chunk_index", chunk["chunk_index"])),
+                "document_chunk_index": int(
+                    chunk.get("document_chunk_index", chunk["chunk_index"])
+                ),
                 "document_id": str(chunk.get("document_id", "")),
+                "word_count": int(chunk.get("word_count", 0)),
                 "token_count": int(chunk.get("token_count", 0)),
                 "char_count": int(chunk.get("char_count", 0)),
                 "start_word": int(chunk.get("start_word", 0)),
@@ -171,8 +187,15 @@ class VectorStore:
                     "source": str(metadata["source"]),
                     "page": int(metadata["page"]),
                     "chunk_index": int(metadata["chunk_index"]),
+                    "page_chunk_index": int(
+                        metadata.get("page_chunk_index", metadata["chunk_index"])
+                    ),
+                    "document_chunk_index": int(
+                        metadata.get("document_chunk_index", metadata["chunk_index"])
+                    ),
                     "similarity_score": float(score),
                     "document_id": str(metadata.get("document_id", "")),
+                    "word_count": int(metadata.get("word_count", 0)),
                     "token_count": int(metadata.get("token_count", 0)),
                     "char_count": int(metadata.get("char_count", 0)),
                     "start_word": int(metadata.get("start_word", 0)),
@@ -271,33 +294,65 @@ class VectorStore:
         if hasattr(index, "nprobe"):
             index.nprobe = max(1, min(self.ivf_nprobe, getattr(index, "nlist", self.ivf_nprobe)))
 
+    def exists(self) -> bool:
+        """Return True when both the FAISS index and metadata are on disk."""
+        return self.index_path.exists() and self.metadata_path.exists()
+
+    def config_mismatches(self) -> dict[str, tuple[Any, Any]]:
+        """Compare the saved build settings with the current ones.
+
+        Returns a mapping ``setting -> (saved, current)`` for every setting that
+        differs. An index saved without a config file, or by an older version
+        that did not record pipeline settings, reports those settings as
+        missing so the caller can rebuild it.
+        """
+        saved_config: dict[str, Any] = {}
+        if self.config_path.exists():
+            try:
+                saved_config = json.loads(self.config_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                saved_config = {}
+
+        current_config = self._flat_config(self._index_config())
+        saved_flat = self._flat_config(saved_config)
+        return {
+            key: (saved_flat.get(key), current_value)
+            for key, current_value in current_config.items()
+            if saved_flat.get(key) != current_value
+        }
+
+    @staticmethod
+    def _flat_config(config: Mapping[str, Any]) -> dict[str, Any]:
+        flat = {key: value for key, value in config.items() if key != "pipeline"}
+        pipeline = config.get("pipeline", {})
+        if isinstance(pipeline, Mapping):
+            flat.update({f"pipeline.{key}": value for key, value in pipeline.items()})
+        return flat
+
     def _warn_on_config_mismatch(self) -> None:
         if not self.config_path.exists():
             return
 
-        saved_config = json.loads(self.config_path.read_text(encoding="utf-8"))
-        current_config = self._index_config()
-        mismatches = {
-            key: (saved_config.get(key), current_config[key])
-            for key in current_config
-            if saved_config.get(key) != current_config[key]
-        }
+        mismatches = self.config_mismatches()
         if mismatches:
             details = ", ".join(
                 f"{key}: saved={saved!r}, current={current!r}"
                 for key, (saved, current) in mismatches.items()
             )
             warnings.warn(
-                f"Loaded FAISS index was built with different vector config ({details}). "
+                f"Loaded FAISS index was built with different settings ({details}). "
                 "Run with --rebuild if this was not intentional.",
                 RuntimeWarning,
                 stacklevel=2,
             )
 
     def _index_config(self) -> dict[str, Any]:
-        return {
+        config: dict[str, Any] = {
             "index_type": self.index_type,
             "hnsw_m": self.hnsw_m,
             "ivf_nlist": self.ivf_nlist,
             "ivf_nprobe": self.ivf_nprobe,
         }
+        if self.pipeline_config:
+            config["pipeline"] = self.pipeline_config
+        return config

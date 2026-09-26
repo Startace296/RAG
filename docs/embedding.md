@@ -164,10 +164,10 @@ Kết luận chỉ nên chốt sau khi có bảng số trên chính tài liệu 
 
 ## Benchmark Embedding
 
-Benchmark dùng cùng file ground truth:
+Benchmark dùng file ground truth trong biến `EVALUATION_QUESTIONS`, mặc định:
 
 ```text
-evaluation/chunking_questions.jsonl
+evaluation/kinhtevn_questions.jsonl
 ```
 
 Chạy toàn bộ model trong `.env`:

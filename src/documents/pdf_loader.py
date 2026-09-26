@@ -20,6 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_IMAGE_OUTPUT_DIR = PROJECT_ROOT / "storage" / "images"
 DOCUMENT_HASH_CHUNK_SIZE = 1024 * 1024
 LAYOUT_TEXT_PREVIEW_CHARS = 160
+DEFAULT_IMAGE_MIN_SIDE = 32
 
 
 def _build_document_id(path: Path) -> str:
@@ -303,16 +304,50 @@ def _save_pdf_image(
         }
 
 
+def _image_min_side() -> int:
+    try:
+        return max(0, int(os.getenv("IMAGE_MIN_SIDE", str(DEFAULT_IMAGE_MIN_SIDE))))
+    except ValueError:
+        return DEFAULT_IMAGE_MIN_SIDE
+
+
+def _clear_exported_images(output_dir: Path) -> None:
+    """Remove images exported by an earlier run for the same document."""
+    if not output_dir.is_dir():
+        return
+    for path in output_dir.glob("page_*_image_*_xref_*.*"):
+        if path.is_file():
+            path.unlink()
+
+
 def _extract_images(
     pdf: pymupdf.Document,
     page: pymupdf.Page,
     document_id: str,
     page_number: int,
     output_dir: Path | None,
-) -> list[DocumentImage]:
+) -> tuple[list[DocumentImage], int]:
+    """Return useful images on the page and the number of skipped ones.
+
+    Images smaller than IMAGE_MIN_SIDE pixels on either side (masks, spacers,
+    1x1 or 2x2 pixels) and repeated references to the same image on the same
+    page are skipped.
+    """
     images: list[DocumentImage] = []
-    for image_index, image in enumerate(page.get_images(full=True)):
+    skipped = 0
+    seen_xrefs: set[int] = set()
+    min_side = _image_min_side()
+
+    for image in page.get_images(full=True):
         xref = int(image[0])
+        width = _int_value(image[2])
+        height = _int_value(image[3])
+        if xref in seen_xrefs or min(width, height) < min_side:
+            skipped += 1
+            continue
+        seen_xrefs.add(xref)
+
+        image_index = len(images)
         metadata = {
             "xref": xref,
             "width": image[2],
@@ -346,7 +381,7 @@ def _extract_images(
                 metadata=metadata,
             )
         )
-    return images
+    return images, skipped
 
 
 def load_pdf_document(
@@ -370,9 +405,13 @@ def load_pdf_document(
             else None
         )
 
+        if document_image_output_dir is not None:
+            _clear_exported_images(document_image_output_dir)
+
         with pymupdf.open(path) as pdf:
             pdf_metadata = _clean_metadata(pdf.metadata or {})
             pages: list[DocumentPage] = []
+            skipped_image_count = 0
 
             for page_number, page in enumerate(pdf, start=1):
                 text = page.get_text("text").strip()
@@ -380,13 +419,14 @@ def load_pdf_document(
                 tables = _extract_page_tables(page)
                 section_title = _extract_page_heading(text, layout_blocks)
                 page_rect = page.rect
-                images = _extract_images(
+                images, skipped_on_page = _extract_images(
                     pdf=pdf,
                     page=page,
                     document_id=document_id,
                     page_number=page_number,
                     output_dir=document_image_output_dir,
                 )
+                skipped_image_count += skipped_on_page
                 image_text = "\n\n".join(
                     image_text_value
                     for image in images
@@ -407,6 +447,7 @@ def load_pdf_document(
                                 "searchable_char_count": len(searchable_text),
                                 "searchable_word_count": len(searchable_text.split()),
                                 "image_count": len(images),
+                                "skipped_image_count": skipped_on_page,
                                 "image_text_count": sum(
                                     1 for image in images if image.to_chunk_text()
                                 ),
@@ -438,6 +479,7 @@ def load_pdf_document(
             **pdf_metadata,
             "page_count": len(pages),
             "image_count": sum(len(page.images) for page in pages),
+            "skipped_image_count": skipped_image_count,
             "document_id_strategy": "sha256_file_content_16",
             "content_hash": content_hash,
             "image_output_dir": (

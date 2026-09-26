@@ -1,6 +1,7 @@
 import os
 import re
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -41,9 +42,12 @@ class Source(TypedDict):
     chunk_id: str
     source: str
     page: int
+    page_chunk_index: int
+    document_chunk_index: int
     chunk_index: int
     similarity_score: float
     document_id: str
+    word_count: int
     token_count: int
     section_title: str
     chunking_strategy: str
@@ -56,6 +60,14 @@ class RagResponse(TypedDict):
 
     answer: str
     sources: list[Source]
+
+
+def _hash_file(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as file:
+        for block in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def build_answer_prompt(context: str, question: str) -> str:
@@ -107,6 +119,9 @@ class RagService:
         load_dotenv(PROJECT_ROOT / ".env")
 
         self.pdf_path = Path(pdf_path)
+        self.embedding_model = embedding_model
+        self.embedding_document_prefix = embedding_document_prefix
+        self.embedding_query_prefix = embedding_query_prefix
         self.top_k = top_k
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -125,12 +140,54 @@ class RagService:
             hnsw_m=faiss_hnsw_m,
             ivf_nlist=faiss_ivf_nlist,
             ivf_nprobe=faiss_ivf_nprobe,
+            pipeline_config=self._pipeline_config(),
         )
         self.llm_model = llm_model
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.tokenizer = None
         self.llm = None
         self.enable_thinking = os.getenv("QWEN_ENABLE_THINKING", "false").lower() == "true"
+
+    @classmethod
+    def from_env(cls, pdf_path: str | Path, storage_dir: str | Path) -> "RagService":
+        """Create a service using the settings in ``.env`` and the environment."""
+        load_dotenv(PROJECT_ROOT / ".env")
+        return cls(
+            pdf_path=pdf_path,
+            storage_dir=storage_dir,
+            embedding_model=os.getenv("EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL),
+            embedding_document_prefix=os.getenv("EMBEDDING_DOCUMENT_PREFIX", ""),
+            embedding_query_prefix=os.getenv("EMBEDDING_QUERY_PREFIX", ""),
+            top_k=int(os.getenv("TOP_K", "5")),
+            chunk_size=int(os.getenv("CHUNK_SIZE", "300")),
+            chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "50")),
+            chunking_strategy=os.getenv("CHUNKING_STRATEGY", "recursive"),
+            min_chunk_size=int(os.getenv("MIN_CHUNK_SIZE", "50")),
+            vector_index_type=os.getenv("VECTOR_INDEX_TYPE", "flat"),
+            faiss_hnsw_m=int(os.getenv("FAISS_HNSW_M", "32")),
+            faiss_ivf_nlist=int(os.getenv("FAISS_IVF_NLIST", "64")),
+            faiss_ivf_nprobe=int(os.getenv("FAISS_IVF_NPROBE", "8")),
+            similarity_threshold=float(os.getenv("SIMILARITY_THRESHOLD", "0.25")),
+            max_context_chars=int(os.getenv("MAX_CONTEXT_CHARS", "12000")),
+            llm_model=os.getenv("LOCAL_LLM_MODEL", DEFAULT_LOCAL_LLM_MODEL),
+        )
+
+    def index_mismatches(self) -> dict[str, tuple[Any, Any]]:
+        """Return settings that differ between the saved index and this service."""
+        return self.store.config_mismatches()
+
+    def _pipeline_config(self) -> dict[str, Any]:
+        return {
+            "source_name": self.pdf_path.name,
+            "source_sha256": _hash_file(self.pdf_path) if self.pdf_path.is_file() else "",
+            "embedding_model": self.embedding_model,
+            "embedding_document_prefix": self.embedding_document_prefix,
+            "embedding_query_prefix": self.embedding_query_prefix,
+            "chunking_strategy": self.chunking_strategy.strip().lower(),
+            "chunk_size": self.chunk_size,
+            "chunk_overlap": self.chunk_overlap,
+            "min_chunk_size": self.min_chunk_size,
+        }
 
     def rebuild_index(self) -> None:
         """Load the PDF, create chunks, embed them, and save the FAISS index."""
@@ -156,7 +213,8 @@ class RagService:
         The LLM is called only when at least one retrieved chunk passes the
         similarity threshold.
         """
-        self.store.load()
+        if self.store.index is None:
+            self.store.load()
 
         query_embedding = self.embedder.embed_query(question)
         search_results = self.store.search(query_embedding, top_k=self.top_k)
@@ -252,10 +310,17 @@ class RagService:
                 {
                     "source": result["source"],
                     "page": result["page"],
+                    "page_chunk_index": result.get(
+                        "page_chunk_index", result["chunk_index"]
+                    ),
+                    "document_chunk_index": result.get(
+                        "document_chunk_index", result["chunk_index"]
+                    ),
                     "chunk_index": result["chunk_index"],
                     "similarity_score": result["similarity_score"],
                     "document_id": result.get("document_id", ""),
                     "chunk_id": result.get("chunk_id", ""),
+                    "word_count": result.get("word_count", 0),
                     "token_count": result.get("token_count", 0),
                     "section_title": result.get("section_title", ""),
                     "chunking_strategy": result.get("chunking_strategy", ""),
