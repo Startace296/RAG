@@ -535,9 +535,9 @@ Kịch bản giữ nguyên dữ liệu và độ đo, với chunking recursive 3
 
 | Chỉ mục | Recall@5 | MRR | nDCG@5 | Thời gian xây dựng (ms) | Thời gian tìm kiếm (ms/câu) |
 | --- | --- | --- | --- | --- | --- |
-| **Flat** | 0,966 | 0,858 | 0,866 | 1,0 | 0,058 |
-| HNSW | 0,966 | 0,858 | 0,866 | 12,2 | 0,098 |
-| IVF | 0,983 | 0,866 | 0,877 | 5,3 | 0,090 |
+| **Flat** | 0,966 | 0,858 | 0,866 | 0,7 | 0,042 |
+| HNSW | 0,966 | 0,858 | 0,866 | 3,4 | 0,051 |
+| IVF | 0,983 | 0,866 | 0,877 | 4,8 | 0,061 |
 
 Nhận xét:
 
@@ -583,7 +583,7 @@ Hệ thống kết hợp hai phương pháp theo quy trình sau (`RETRIEVAL_MODE
   Câu hỏi
      │
      ▼
-  Dense retrieval: lấy 20 chunk gần nhất (HYBRID_CANDIDATES)
+  Dense retrieval: lấy 10 chunk gần nhất (HYBRID_CANDIDATES)
      │
      ▼
   Lọc: bỏ các chunk có độ tương đồng cosine dưới ngưỡng (SIMILARITY_THRESHOLD)
@@ -614,6 +614,18 @@ Hai phương pháp đóng hai vai trò khác nhau trong quy trình. **Dense retr
 
 **Loại bỏ trùng lặp.** Do gối đầu và do chiến lược parent–child (nhiều chunk con có chung một chunk cha), nhiều kết quả có thể mang cùng nội dung. Hệ thống loại kết quả trùng theo mã chunk và theo văn bản đã chuẩn hóa (văn bản cha nếu có), để 5 vị trí trong ngữ cảnh chứa 5 nội dung khác nhau.
 
+**Số chunk đưa vào ngữ cảnh (TOP_K).** `TOP_K` là số chunk cuối cùng được ghép thành ngữ cảnh cho mô hình ngôn ngữ, sau khi đã lọc ngưỡng, hợp nhất RRF, loại trùng và re-rank. Cần phân biệt nó với hai tham số khác:
+
+| Tham số | Ý nghĩa | Giá trị |
+| --- | --- | --- |
+| `HYBRID_CANDIDATES` | Số ứng viên lấy từ FAISS trước khi xếp hạng lại (BM25, cross-encoder) | 10 |
+| `TOP_K` | Số chunk giữ lại sau khi xếp hạng để làm ngữ cảnh | 5 |
+| `QWEN_TOP_K` | Tham số lấy mẫu (sampling) của mô hình ngôn ngữ, không liên quan đến truy xuất; chỉ có tác dụng khi `QWEN_DO_SAMPLE=true` | 20 (không dùng) |
+
+Khi có bước xếp hạng lại, hệ thống lấy `HYBRID_CANDIDATES` ứng viên rồi mới cắt còn `TOP_K`. Nếu chỉ lấy đúng `TOP_K` từ FAISS thì BM25 và re-ranker không có chunk nào để đưa lên. Vì vậy số ứng viên luôn được giữ không nhỏ hơn `TOP_K`. Khi chỉ dùng dense và không có re-ranker, hệ thống lấy thẳng `TOP_K` chunk từ FAISS.
+
+`TOP_K` là sự đánh đổi giữa độ phủ và độ nhiễu. Nếu `TOP_K` nhỏ, ngữ cảnh gọn nhưng dễ thiếu thông tin khi đáp án không nằm ở chunk xếp đầu, hoặc khi câu hỏi cần ghép nhiều đoạn. Nếu `TOP_K` lớn, độ phủ cao hơn nhưng ngữ cảnh dài hơn, kéo theo nhiều đoạn không liên quan, thời gian sinh lâu hơn với mô hình 4B, và có thể vượt giới hạn `MAX_CONTEXT_CHARS = 12000` ký tự (phần vượt bị cắt bỏ).
+
 ### 7.5. Thực nghiệm và kết quả
 
 So sánh tìm kiếm thuần vector và tìm kiếm kết hợp trên 29 câu hỏi (e5-small, recursive, top-5). Kết hợp thêm hai cách xử lý văn bản: giữ nguyên hoặc loại bỏ header. Hai độ đo được dùng: **tỷ lệ trúng trang** (có ít nhất một chunk thuộc trang đáp án trong top-5) và **tỷ lệ từ khóa đáp án có mặt trong ngữ cảnh**.
@@ -629,11 +641,30 @@ Nhận xét:
 
 - **Hybrid cải thiện rõ rệt**: mọi câu hỏi đều tìm được trang đáp án, và gần như toàn bộ từ khóa của đáp án có mặt trong ngữ cảnh. Các câu hỏi được cải thiện chủ yếu là câu hỏi về số liệu cụ thể, đúng với điểm mạnh của BM25.
 - **Loại header phát huy tác dụng khi dùng hybrid.** Header chứa những từ trùng với nhiều câu hỏi (như “kinh tế Việt Nam”), làm nhiễu xếp hạng BM25.
-- Số ứng viên 20 là đủ: tăng lên không thay đổi kết quả, giảm xuống 10 làm tỷ lệ từ khóa giảm còn 0,957. Hằng số RRF `k` bằng 20 hay 60 cho cùng kết quả.
+- Số ứng viên 10 là đủ: đo lại trên chỉ mục hiện tại, 10 và 20 ứng viên cho cùng kết quả (trúng trang 1,000, từ khóa 0,991, MRR 0,943). Hệ thống dùng 10 ứng viên để giảm chi phí cho bước re-ranker ở Chương 8. Hằng số RRF `k` bằng 20 hay 60 cho cùng kết quả.
+
+**Ảnh hưởng của TOP_K.** Thay đổi số chunk đưa vào ngữ cảnh (k = 1, 3, 5, 8, 10), giữ nguyên các tham số khác (10 ứng viên, ngưỡng 0,795). Mỗi câu hỏi chỉ được truy xuất một lần với k = 10, các giá trị k nhỏ hơn là phần đầu của cùng thứ hạng đó, nên kết quả giữa các k so sánh được trực tiếp. Bảng dưới được đo lại trên chỉ mục hiện tại (hybrid, loại header); độ dài ngữ cảnh tính theo số ký tự văn bản đưa cho mô hình ngôn ngữ, trước khi áp giới hạn 12.000 ký tự.
+
+| TOP_K | Hybrid: trúng trang | Hybrid: từ khóa | Hybrid + re-ranker: trúng trang | Hybrid + re-ranker: từ khóa | Độ dài ngữ cảnh TB (ký tự) |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 0,897 | 0,862 | 0,966 | 0,964 | ~1.200 |
+| 3 | 1,000 | 0,991 | 1,000 | 0,991 | ~3.900 |
+| **5** | **1,000** | **0,991** | **1,000** | **0,991** | **~6.400** |
+| 8 | 1,000 | 0,991 | 1,000 | 0,991 | ~10.300 |
+| 10 | 1,000 | 0,991 | 1,000 | 0,991 | ~12.800 |
+
+Nhận xét:
+
+- **k = 1 không đủ**: khoảng 10% câu hỏi (hybrid) mất trang đáp án vì đáp án nằm ở chunk thứ hai hoặc thứ ba. Re-ranker giảm số câu này còn 1, nhưng vẫn chưa đủ.
+- **Từ k = 3 trở đi kết quả bão hòa**: tỷ lệ trúng trang và tỷ lệ từ khóa không tăng thêm. Từ khóa còn thiếu (0,991 thay vì 1,000) thuộc về một câu mà các chunk ứng viên không chứa đủ, nên không thể khắc phục bằng cách tăng k.
+- **Chi phí tăng tuyến tính theo k**: độ dài ngữ cảnh tăng khoảng 1.300 ký tự cho mỗi chunk. Với k = 10, ngữ cảnh trung bình vượt giới hạn 12.000 ký tự và bị cắt, nên chunk cuối không được mô hình đọc trọn vẹn.
+- Thời gian truy xuất gần như không phụ thuộc k, vì FAISS và re-ranker luôn xử lý 10 ứng viên. Chi phí của k lớn nằm ở bước sinh câu trả lời.
 
 ### 7.6. Nhận xét và lựa chọn
 
-Hệ thống chọn **hybrid retrieval**: dense retrieval bằng e5-small chọn 20 ứng viên, lọc theo ngưỡng 0,795, xếp hạng lại bằng RRF kết hợp với BM25, lấy 5 kết quả. Hai phương pháp bù trừ điểm yếu cho nhau: dense hiểu ngữ nghĩa, BM25 bắt chính xác số liệu và tên riêng. Cách thiết kế để dense quyết định tập ứng viên giữ được khả năng từ chối câu hỏi ngoài tài liệu, trong khi BM25 chỉ góp phần xếp hạng.
+Hệ thống chọn **hybrid retrieval**: dense retrieval bằng e5-small chọn 10 ứng viên, lọc theo ngưỡng 0,795, xếp hạng lại bằng RRF kết hợp với BM25, lấy 5 kết quả (`TOP_K = 5`). Hai phương pháp bù trừ điểm yếu cho nhau: dense hiểu ngữ nghĩa, BM25 bắt chính xác số liệu và tên riêng. Cách thiết kế để dense quyết định tập ứng viên giữ được khả năng từ chối câu hỏi ngoài tài liệu, trong khi BM25 chỉ góp phần xếp hạng.
+
+`TOP_K = 5` được chọn thay vì 3, dù trên bộ 29 câu k = 3 đã cho kết quả tối đa. Bộ câu hỏi hiện tại phần lớn là câu hỏi một ý, đáp án nằm gọn trong một trang. Với câu hỏi tổng hợp cần ghép nhiều đoạn, hai vị trí thêm là phần dự phòng. Ngữ cảnh khoảng 6.400 ký tự vẫn chỉ chiếm khoảng một nửa giới hạn 12.000 ký tự. Các giá trị 8 và 10 không cải thiện độ phủ mà làm ngữ cảnh dài gấp đôi, và với k = 10 ngữ cảnh còn bị cắt.
 
 ---
 
@@ -641,25 +672,101 @@ Hệ thống chọn **hybrid retrieval**: dense retrieval bằng e5-small chọn
 
 ### 8.1. Vai trò của re-ranking trong RAG
 
-Re-ranking là bước **xếp hạng lại** một tập nhỏ ứng viên đã được bước tìm kiếm đầu tiên chọn ra. Bước tìm kiếm đầu tiên cần nhanh trên toàn bộ dữ liệu nên chấp nhận độ chính xác vừa phải. Bước re-ranking chỉ xử lý vài chục ứng viên, nên có thể dùng tín hiệu bổ sung để sắp xếp chính xác hơn. Kết quả là các chunk tốt nhất được đẩy lên đầu và đi vào ngữ cảnh có giới hạn của mô hình ngôn ngữ.
+Re-ranking là bước **xếp hạng lại** một tập nhỏ ứng viên đã được bước tìm kiếm đầu tiên chọn ra. Bước tìm kiếm đầu tiên cần nhanh trên toàn bộ dữ liệu nên chấp nhận độ chính xác vừa phải. Bước re-ranking chỉ xử lý vài chục ứng viên, nên có thể dùng mô hình chậm hơn nhưng chính xác hơn. Kết quả là các chunk tốt nhất được đẩy lên đầu và đi vào ngữ cảnh có giới hạn của mô hình ngôn ngữ.
 
-### 8.2. Phương pháp re-ranking trong hệ thống
+Hai kiến trúc mô hình khác nhau ở cách đọc câu hỏi và văn bản:
 
-Hệ thống chưa dùng mô hình re-ranker riêng (như cross-encoder). Vai trò re-ranking được đảm nhận bởi **bước hợp nhất thứ hạng RRF** trình bày ở Chương 7:
+- **Bi-encoder** (mô hình embedding ở Chương 5) mã hóa câu hỏi và chunk **độc lập** thành hai vector, rồi so sánh bằng cosine. Vector chunk được tính trước một lần, nên tìm kiếm trên toàn bộ dữ liệu rất nhanh. Đổi lại, mọi thông tin của chunk bị nén vào một vector cố định trước khi biết câu hỏi.
+- **Cross-encoder** đưa **cả câu hỏi và chunk vào cùng một lượt** qua mô hình Transformer, để cơ chế attention so khớp trực tiếp từng từ của câu hỏi với từng từ của chunk, rồi xuất ra một điểm liên quan. Cách này chính xác hơn, nhưng phải chạy mô hình lại cho từng cặp (câu hỏi, chunk), nên chỉ dùng được trên tập ứng viên nhỏ.
 
-- Tập ứng viên: 20 chunk có độ tương đồng vector cao nhất, đã qua ngưỡng lọc.
-- Tín hiệu xếp hạng lại: thứ hạng BM25 của từng ứng viên.
-- Điểm cuối cùng: tổng nghịch đảo thứ hạng của hai phương pháp.
+### 8.2. Mô hình re-ranker được chọn
 
-Cách này có ưu điểm là rất nhẹ: không cần tải thêm mô hình, không tốn GPU. Chỉ mục BM25 được xây dựng một lần trong bộ nhớ, và việc tính điểm cho khoảng một trăm chunk là không đáng kể so với thời gian sinh câu trả lời.
+Hệ thống dùng **`BAAI/bge-reranker-v2-m3`**, một cross-encoder đa ngôn ngữ khoảng 568 triệu tham số, xây dựng trên XLM-RoBERTa (khởi tạo từ BGE-M3). Các mô hình được cân nhắc:
 
-### 8.3. Thực nghiệm và kết quả
+| Mô hình | Kích thước | Tiếng Việt | Ghi chú |
+| --- | --- | --- | --- |
+| **BAAI/bge-reranker-v2-m3** | ~568M | Tốt, huấn luyện đa ngôn ngữ | Giấy phép Apache-2.0, dùng trực tiếp với `CrossEncoder` của sentence-transformers |
+| cross-encoder/mmarco-mMiniLMv2-L12-H384-v1 | ~118M | Khá (mMARCO có tiếng Việt) | Nhanh hơn nhiều nhưng kém chính xác hơn |
+| jinaai/jina-reranker-v2-base-multilingual | ~278M | Tốt | Giấy phép phi thương mại, cần `trust_remote_code` |
+| itdainb/PhoRanker | ~135M | Chuyên tiếng Việt | Cần tách từ bằng `pyvi` trước, pipeline phức tạp hơn |
 
-Hiệu quả của bước xếp hạng lại được đo bằng cách so sánh thứ tự dense ban đầu với thứ tự sau RRF (bảng ở mục 7.5). Xếp hạng lại nâng tỷ lệ trúng trang từ 0,931 lên 1,000, và tỷ lệ từ khóa đáp án có trong ngữ cảnh từ 0,905 lên 0,991. Nói cách khác, các chunk đúng thường đã có trong 20 ứng viên nhưng bị xếp ngoài top-5; bước xếp hạng lại đưa chúng vào top-5.
+Lý do chọn: đây là reranker đa ngôn ngữ được dùng phổ biến nhất, hỗ trợ tốt tiếng Việt, độ dài đầu vào 512 token đủ chứa câu hỏi và một chunk 300 từ, và không cần thêm thư viện ngoài `sentence-transformers` đã có trong dự án.
 
-### 8.4. Nhận xét và lựa chọn
+### 8.3. Tích hợp vào hệ thống
 
-Với quy mô tài liệu hiện tại, xếp hạng lại bằng RRF với BM25 đã đưa được chunk đúng vào ngữ cảnh cho mọi câu hỏi trong bộ đánh giá, với chi phí tính toán không đáng kể. Vì vậy hệ thống chưa cần thêm một mô hình re-ranker riêng.
+Re-ranker được cài đặt trong `src/retrieval/reranker.py` (lớp `CrossEncoderReranker`) và gọi trong `RagService.retrieve()`. Quy trình retrieval đầy đủ:
+
+```text
+  Câu hỏi
+     │
+     ▼
+  Dense retrieval: lấy 10 chunk gần nhất (HYBRID_CANDIDATES)
+     │
+     ▼
+  Lọc theo ngưỡng cosine (SIMILARITY_THRESHOLD)
+     │
+     ▼
+  Hợp nhất thứ hạng dense + BM25 bằng RRF (Chương 7)
+     │
+     ▼
+  Loại bỏ trùng lặp
+     │
+     ▼
+  Cross-encoder chấm điểm từng cặp (câu hỏi, chunk), sắp xếp lại
+     │
+     ▼
+  Lấy 5 chunk đầu (TOP_K)
+```
+
+Các điểm thiết kế:
+
+- **Cấu hình qua `.env`**: `RERANKER_MODEL` (để trống thì tắt bước này) và `RERANKER_DEVICE`. `RERANKER_MODEL` nhận tên mô hình trên Hugging Face hoặc đường dẫn thư mục cục bộ.
+- **Tải khi cần**: mô hình chỉ được nạp ở câu hỏi đầu tiên có ứng viên.
+- **Chấm văn bản mà mô hình ngôn ngữ sẽ đọc**: nếu chunk có văn bản cha (parent–child), re-ranker chấm văn bản cha.
+- **Ngưỡng vẫn áp lên điểm dense.** Re-ranker chỉ sắp xếp lại các ứng viên đã qua ngưỡng, không thêm ứng viên mới. Câu hỏi ngoài tài liệu vẫn bị từ chối như trước.
+- **Chạy trên CPU** theo mặc định, vì GPU 4GB đã dành cho mô hình ngôn ngữ (xem mục 8.4).
+
+### 8.4. Thực nghiệm và kết quả
+
+**Kịch bản.** Chạy 29 câu hỏi qua `RagService.retrieve()` với bốn cấu hình, không gọi mô hình ngôn ngữ (`evaluation/run_retrieval_eval.py`). Cấu hình chung: e5-small, recursive 300/50, loại header, top-5. Bốn cấu hình chính dùng 20 ứng viên; hai dòng cuối dùng 10 ứng viên. Ba độ đo được tính trên 5 chunk đưa vào ngữ cảnh:
+
+- **Tỷ lệ trúng trang**: có ít nhất một chunk thuộc trang đáp án.
+- **MRR**: nghịch đảo thứ hạng của chunk đầu tiên thuộc trang đáp án, lấy trung bình. MRR càng cao thì chunk đúng càng đứng gần đầu.
+- **Từ khóa đáp án có trong ngữ cảnh**: tỷ lệ từ khóa mong đợi xuất hiện trong 5 chunk.
+
+**Máy thực nghiệm**: GPU RTX 3050 Laptop 4GB, RAM 16GB.
+
+| Cấu hình | Trúng trang | MRR | Từ khóa trong ngữ cảnh | Thời gian retrieval / câu |
+| --- | --- | --- | --- | --- |
+| Dense | 0,966 | 0,880 | 0,957 | 18 ms |
+| Hybrid (RRF + BM25) | 1,000 | 0,943 | 0,991 | 20 ms |
+| Dense + re-ranker | 1,000 | 0,977 | 0,991 | 19,7 s |
+| Hybrid + re-ranker | 1,000 | 0,977 | 0,991 | 19,7 s |
+| Hybrid, 10 ứng viên | 1,000 | 0,943 | 0,991 | 19 ms |
+| **Hybrid + re-ranker, 10 ứng viên (cấu hình chọn)** | **1,000** | **0,977** | **0,991** | 10,1 s |
+
+Số liệu dense và hybrid được đo lại trên chỉ mục hiện tại nên có thể lệch nhẹ so với bảng ở mục 7.5. Kết quả chi tiết: `evaluation/results/reranker_eval.json` và `reranker_eval_candidates10.json`.
+
+**Chất lượng xếp hạng.**
+
+- Re-ranker **tăng MRR từ 0,943 lên 0,977**, tức chunk đúng được đưa lên đầu ngữ cảnh. Tỷ lệ trúng trang và từ khóa đã ở mức trần sau hybrid nên không đổi.
+- So với hybrid, có 4 câu thay đổi thứ hạng của trang đáp án. Ba câu được cải thiện: câu hỏi về mục đích và tần suất của báo cáo (hạng 2 → 1), về các yếu tố tăng trưởng năm 2026 (hạng 3 → 1), và về thách thức chính sách lớn nhất (hạng 2 → 1). Một câu bị đẩy xuống: câu hỏi về rủi ro suy giảm ngắn hạn (hạng 1 → 3). Trang đáp án vẫn nằm trong top-5 ở cả bốn câu.
+- Re-ranker **thay thế được BM25** về chất lượng: “dense + re-ranker” cho kết quả bằng “hybrid + re-ranker”. Ví dụ, câu hỏi về tiêu đề phụ của báo cáo bị dense bỏ lỡ, nhưng được re-ranker đưa trang đáp án vào top-5.
+- Giảm số ứng viên từ 20 xuống 10 cho cùng chất lượng, vì ở bộ câu hỏi này chunk đúng luôn nằm trong 10 ứng viên đầu. Hệ thống chọn 10 ứng viên.
+
+**Chi phí.**
+
+- Trên **CPU**, re-ranker mất khoảng **20 giây** cho 20 ứng viên, gấp khoảng 1.000 lần retrieval không có re-ranker. Thời gian tăng gần tuyến tính theo số ứng viên (10 ứng viên: 10 giây). Để so sánh, mô hình ngôn ngữ sinh một câu trả lời mất khoảng 10 giây, nên với 20 ứng viên tổng thời gian trả lời tăng khoảng 3 lần, với 10 ứng viên khoảng 2 lần.
+- Trên **GPU** (fp16), re-ranker chỉ mất khoảng **0,45 giây** và chiếm khoảng 1,2GB bộ nhớ. Tuy nhiên, khi chạy cùng Qwen3-4B 4-bit (khoảng 3,2GB), đỉnh bộ nhớ lên 4,26GB, vượt 4GB VRAM. Windows phải dùng bộ nhớ dùng chung, và thời gian sinh câu trả lời tăng từ khoảng 10 giây lên 120–176 giây. Vì vậy, trên máy 4GB, re-ranker phải chạy trên CPU.
+
+### 8.5. Nhận xét và lựa chọn
+
+- **Về chất lượng**, cross-encoder bge-reranker-v2-m3 là bước xếp hạng chính xác nhất: MRR cao nhất (0,977), và tự nó đã đạt mức của hybrid mà không cần BM25. Điều này phù hợp với lý thuyết: cross-encoder đọc đồng thời câu hỏi và chunk nên bắt được cả từ khóa chính xác lẫn ngữ nghĩa.
+- **Về chi phí**, trên phần cứng của đề tài (GPU 4GB), re-ranker phải chạy trên CPU và là bước chậm nhất của pipeline.
+- **Lựa chọn**: hệ thống tích hợp re-ranker theo thứ tự **dense → RRF với BM25 → cross-encoder** và bật trong cấu hình mặc định (`RERANKER_MODEL=BAAI/bge-reranker-v2-m3`, `RERANKER_DEVICE=cpu`, `HYBRID_CANDIDATES=10`). Với 10 ứng viên, re-ranker mất khoảng 10 giây mỗi câu trên CPU, bằng thời gian sinh câu trả lời. RRF với BM25 được giữ lại vì gần như không tốn chi phí và vẫn là phương án dự phòng khi tắt re-ranker.
+- **Điều chỉnh theo phần cứng**:
+  - Cần phản hồi nhanh: để trống `RERANKER_MODEL` để quay về RRF với BM25 (MRR 0,943, retrieval dưới 20 ms).
+  - Có GPU từ 6GB trở lên: đặt `RERANKER_DEVICE=cuda` để thời gian re-ranking còn dưới 1 giây.
 
 ---
 
@@ -731,8 +838,8 @@ Không có trường hợp nào lỗi do retrieval bỏ sót trang đáp án. Nh
 | Chunking | Fixed-size, sliding window, sentence, paragraph, recursive, semantic, parent–child; kích thước 150/300/500 | Recursive, 300 từ, gối đầu 50 | Recall@5 0,966, MRR 0,858, cao nhất |
 | Embedding | MiniLM, mpnet, e5-small, e5-base | e5-small | Chính xác tương đương e5-base, nhanh gấp 2–3 lần |
 | Vector store | FAISS Flat, HNSW, IVF | FAISS Flat | Chính xác tuyệt đối, nhanh nhất ở quy mô nhỏ |
-| Retrieval | Dense; hybrid (dense + BM25 + RRF) | Hybrid, 20 ứng viên, top-5 | Trúng trang 0,931 → 1,000 |
-| Re-ranking | RRF với BM25 | RRF với BM25 | Đủ đưa chunk đúng vào top-5, chi phí không đáng kể |
+| Retrieval | Dense; hybrid (dense + BM25 + RRF) | Hybrid, 10 ứng viên, top-5 | Trúng trang 0,931 → 1,000; k = 3 đã bão hòa, k = 5 để dự phòng câu hỏi nhiều ý |
+| Re-ranking | RRF với BM25; cross-encoder bge-reranker-v2-m3 | RRF với BM25 + bge-reranker-v2-m3 (CPU) | MRR 0,943 → 0,977; tốn ~10 giây/câu trên CPU với 10 ứng viên |
 | Sinh câu trả lời | Qwen3-4B-Instruct-2507 | Qwen3-4B, 4-bit, greedy | Chạy được trên GPU nhỏ, tiếng Việt tốt, kết quả tất định |
 
 ### 10.2. Cấu hình pipeline đề xuất
@@ -760,11 +867,15 @@ VECTOR_INDEX_TYPE=flat
 
 # Retrieval
 RETRIEVAL_MODE=hybrid
-HYBRID_CANDIDATES=20
+HYBRID_CANDIDATES=10
 HYBRID_RRF_K=60
 TOP_K=5
 SIMILARITY_THRESHOLD=0.795
 MAX_CONTEXT_CHARS=12000
+
+# Re-ranker
+RERANKER_MODEL=BAAI/bge-reranker-v2-m3
+RERANKER_DEVICE=cpu
 
 # Sinh câu trả lời
 LOCAL_LLM_MODEL=Qwen/Qwen3-4B-Instruct-2507
@@ -805,6 +916,7 @@ Tổng cộng, pipeline tối ưu tăng Recall@5 thêm khoảng 33 điểm và M
 - **Bảy chiến lược chunking** được cài đặt và so sánh bằng thực nghiệm; chiến lược recursive được chọn.
 - **Khảo sát bốn mô hình embedding** và **ba thuật toán đánh chỉ mục**, với các lựa chọn dựa trên số liệu thực nghiệm.
 - **Tìm kiếm kết hợp** dense và BM25 bằng RRF, đạt tỷ lệ trúng trang tuyệt đối trên bộ câu hỏi đánh giá.
+- **Re-ranker cross-encoder** bge-reranker-v2-m3 đưa chunk đúng lên đầu ngữ cảnh, nâng MRR từ 0,943 lên 0,977.
 - **Sinh câu trả lời** có trích dẫn nguồn, biết từ chối khi thiếu thông tin và chống được chỉ dẫn độc hại.
 - **Bộ công cụ đánh giá** gồm bộ câu hỏi có gán nhãn, các chương trình benchmark cho từng thành phần và đánh giá end-to-end.
 
@@ -817,6 +929,7 @@ Tổng cộng, pipeline tối ưu tăng Recall@5 thêm khoảng 33 điểm và M
 - **Tiêu đề mục chưa được đưa vào văn bản dùng để mã hóa**; nó mới chỉ là metadata đi kèm chunk.
 - **Quy mô đánh giá nhỏ**: một tài liệu và 33 câu hỏi. Đánh giá câu trả lời bằng so khớp từ khóa còn chặt với cách diễn đạt khác.
 - **Mô hình ngôn ngữ 4B tham số** đôi khi chọn sai câu trong ngữ cảnh hoặc bỏ sót ý phụ.
+- **Re-ranker chạy trên CPU** do GPU 4GB không đủ chứa cùng lúc re-ranker và mô hình ngôn ngữ, làm mỗi câu hỏi chậm thêm khoảng 10 giây.
 
 ### 11.3. Hướng phát triển
 
@@ -826,6 +939,7 @@ Tổng cộng, pipeline tối ưu tăng Recall@5 thêm khoảng 33 điểm và M
 - Đưa tiêu đề mục vào văn bản mã hóa để tăng ngữ cảnh cho vector.
 - Mở rộng bộ đánh giá với nhiều tài liệu, nhiều câu hỏi hơn, và bổ sung phương pháp đánh giá câu trả lời theo ngữ nghĩa.
 - Chuyển sang chỉ mục HNSW khi số lượng tài liệu tăng lên.
+- Chạy re-ranker trên GPU khi có bộ nhớ lớn hơn, hoặc thử re-ranker nhỏ hơn (mMiniLM) hay lượng tử hóa re-ranker để giảm thời gian trên CPU.
 
 ---
 
@@ -971,9 +1085,11 @@ class TextChunk(TypedDict, total=False):
 | Embedding mặc định | `intfloat/multilingual-e5-small`, chạy trên CPU |
 | Vector store mặc định | FAISS `IndexFlatIP` |
 | Tham số HNSW / IVF | `M = 32` / `nlist = 64`, `nprobe = 8` |
-| Retrieval | Top-5; hybrid với 20 ứng viên, RRF `k = 60`; ngưỡng cosine 0,795 |
+| Retrieval | Top-5; hybrid với 10 ứng viên, RRF `k = 60`; ngưỡng cosine 0,795 |
+| Re-ranker | `BAAI/bge-reranker-v2-m3`, cross-encoder, chạy trên CPU, tối đa 512 token |
+| Phần cứng | GPU NVIDIA RTX 3050 Laptop 4GB, RAM 16GB |
 | Mô hình ngôn ngữ | `Qwen/Qwen3-4B-Instruct-2507`, lượng tử hóa 4-bit NF4, giải mã tham lam, tối đa 512 token |
-| Chương trình thực nghiệm | `src/benchmarks/chunking_benchmark.py`, `embedding_benchmark.py`, `vector_store_benchmark.py`, `evaluation/run_kinhtevn_rag_eval.py` |
+| Chương trình thực nghiệm | `src/benchmarks/chunking_benchmark.py`, `embedding_benchmark.py`, `vector_store_benchmark.py`, `evaluation/run_retrieval_eval.py`, `evaluation/run_kinhtevn_rag_eval.py` |
 
 Lệnh chạy lại toàn bộ thực nghiệm:
 
@@ -984,6 +1100,8 @@ python -m src.benchmarks.chunking_benchmark --chunk-size 500 --strategies fixed_
 python -m src.benchmarks.embedding_benchmark
 python -m src.benchmarks.embedding_benchmark --chunking-strategy fixed_word --models miniLM-multilingual e5-small
 python -m src.benchmarks.vector_store_benchmark
+python evaluation/run_retrieval_eval.py
+python evaluation/run_retrieval_eval.py --configs hybrid,hybrid+rerank --top-k 1,3,5,8,10 --report evaluation/results/top_k_eval.json
 python evaluation/run_kinhtevn_rag_eval.py
 ```
 
@@ -1069,9 +1187,9 @@ Các kết quả dưới đây được đo trên phiên bản mã nguồn hiệ
 
 | Chỉ mục | Hit@5 | Precision@5 | Recall@5 | MRR | nDCG@5 | Xây dựng (ms) | Tìm kiếm (ms) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| flat | 0,9655 | 0,3034 | 0,9655 | 0,8575 | 0,8660 | 1,0 | 0,058 |
-| hnsw | 0,9655 | 0,3034 | 0,9655 | 0,8575 | 0,8660 | 12,2 | 0,098 |
-| ivf | 1,0000 | 0,3103 | 0,9828 | 0,8661 | 0,8769 | 5,3 | 0,090 |
+| flat | 0,9655 | 0,3034 | 0,9655 | 0,8575 | 0,8660 | 0,7 | 0,042 |
+| hnsw | 0,9655 | 0,3034 | 0,9655 | 0,8575 | 0,8660 | 3,4 | 0,051 |
+| ivf | 1,0000 | 0,3103 | 0,9828 | 0,8661 | 0,8769 | 4,8 | 0,061 |
 
 **D.6. Đánh giá end-to-end** (hybrid, e5-small, recursive 300, Qwen3-4B)
 

@@ -1,20 +1,9 @@
 import argparse
-import os
 import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
-
-from ..paths import DEFAULT_STORAGE_DIR, PROJECT_ROOT, default_pdf_path, resolve_path
+from ..core import DEFAULT_STORAGE_DIR, default_pdf_path, is_verbose, load_env, resolve_path
 from .rag_service import RagResponse, RagService
-
-
-# Kept for callers that imported the old private helper.
-_resolve_path = resolve_path
-
-
-def _is_verbose() -> bool:
-    return os.getenv("RAG_VERBOSE", "false").lower() == "true"
 
 
 def _print_response(response: RagResponse) -> None:
@@ -39,7 +28,7 @@ def _ensure_index(service: RagService, storage_dir: Path, rebuild: bool) -> bool
     elif service.store.exists():
         mismatches = service.index_mismatches()
         if not mismatches:
-            if _is_verbose():
+            if is_verbose():
                 print(f"Loaded existing FAISS index from: {storage_dir}")
             return True
         print("Saved index was built with different settings; rebuilding it:")
@@ -54,7 +43,7 @@ def _ensure_index(service: RagService, storage_dir: Path, rebuild: bool) -> bool
         print(f"Error while building FAISS index: {exc}")
         return False
 
-    if _is_verbose():
+    if is_verbose():
         print("FAISS index is ready.")
     return True
 
@@ -67,7 +56,7 @@ def _warm_up_llm(service: RagService) -> bool:
         print(f"Error while loading local LLM: {exc}")
         return False
 
-    if _is_verbose():
+    if is_verbose():
         print("Local LLM is ready.")
     return True
 
@@ -103,7 +92,7 @@ def main() -> None:
     # and the console code page is not UTF-8.
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    load_dotenv(PROJECT_ROOT / ".env")
+    load_env()
 
     parser = argparse.ArgumentParser(description="Run a terminal RAG app for a PDF")
     parser.add_argument(
@@ -141,7 +130,7 @@ def main() -> None:
         print(f"Error while initializing RAG service: {exc}")
         return
 
-    if _is_verbose():
+    if is_verbose():
         print(f"PDF: {pdf_path}")
         print(f"Storage: {storage_dir}")
 

@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 DEFAULT_STORAGE_DIR = PROJECT_ROOT / "storage"
 DEFAULT_EVALUATION_DIR = PROJECT_ROOT / "evaluation"

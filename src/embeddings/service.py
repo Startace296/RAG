@@ -1,5 +1,4 @@
 import os
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -9,19 +8,10 @@ os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
+from ..core import quiet_output
+
 
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-
-
-@contextmanager
-def _quiet_model_load():
-    if os.getenv("RAG_VERBOSE", "false").lower() == "true":
-        yield
-        return
-
-    with open(os.devnull, "w", encoding="utf-8") as devnull:
-        with redirect_stdout(devnull), redirect_stderr(devnull):
-            yield
 
 
 class EmbeddingService:
@@ -47,8 +37,11 @@ class EmbeddingService:
         self.model_name = model_name
         self.document_prefix = document_prefix
         self.query_prefix = query_prefix
-        with _quiet_model_load():
-            self.model = SentenceTransformer(model_name)
+        with quiet_output():
+            # Default to CPU so the small embedder leaves the GPU memory to the LLM.
+            self.model = SentenceTransformer(
+                model_name, device=os.getenv("EMBEDDING_DEVICE", "cpu")
+            )
 
     def embed_documents(self, chunks: Sequence[Mapping[str, Any]]) -> np.ndarray:
         """Embed many text chunks.

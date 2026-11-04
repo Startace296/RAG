@@ -6,6 +6,7 @@ from typing import Any
 
 import pymupdf
 
+from ..core import DEFAULT_STORAGE_DIR, resolve_path
 from .schemas import (
     Document,
     DocumentImage,
@@ -16,11 +17,28 @@ from .schemas import (
 )
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_IMAGE_OUTPUT_DIR = PROJECT_ROOT / "storage" / "images"
+DEFAULT_IMAGE_OUTPUT_DIR = DEFAULT_STORAGE_DIR / "images"
 DOCUMENT_HASH_CHUNK_SIZE = 1024 * 1024
 LAYOUT_TEXT_PREVIEW_CHARS = 160
 DEFAULT_IMAGE_MIN_SIDE = 32
+# Bump when text extraction or chunk text changes so saved indexes are rebuilt.
+DOCUMENT_PARSER_VERSION = 4
+# A line is a running header/footer when it appears on at least this share of pages.
+BOILERPLATE_PAGE_RATIO = 0.3
+BOILERPLATE_MIN_PAGES = 3
+BOILERPLATE_MIN_CHARS = 15
+# The same line repeated this many times on one page is a stamp or watermark.
+BOILERPLATE_REPEATS_PER_PAGE = 3
+PAGE_EDGE_LINES = 4
+# Lines at least this long that end without a break were wrapped at the page margin.
+WRAPPED_LINE_MIN_CHARS = 40
+# Section headings use a font at least this much larger than the body text.
+HEADING_FONT_RATIO = 1.4
+# A heading block ending with one of these words continues in the next block.
+HEADING_CONTINUATION_WORDS = (" và", " của", " với", " cho", " and", " of")
+# Figure captions and source notes are short but are not section headings.
+HEADING_EXCLUDED_PREFIXES = ("nguồn:", "source:", "hình", "figure", "bảng", "table")
+PAGE_NUMBER_PATTERN = re.compile(r"^\d{1,4}\s+|\s+\d{1,4}$")
 
 
 def _build_document_id(path: Path) -> str:
@@ -139,26 +157,95 @@ def _extract_page_layout(page: pymupdf.Page) -> tuple[list[PageLayoutBlock], dic
     }
 
 
-def _extract_page_heading(text: str, layout_blocks: list[PageLayoutBlock]) -> str:
-    for block in layout_blocks:
-        if block.get("block_type") != "text":
-            continue
-        candidate = str(block.get("text_preview", "")).strip()
+def _extract_page_heading(text: str) -> str:
+    """Return the first short paragraph of the (cleaned) page text."""
+    for paragraph in re.split(r"\n\s*\n", text):
+        candidate = _normalize_line(paragraph)
         if _is_heading_candidate(candidate):
             return candidate
-
-    for line in text.splitlines():
-        candidate = line.strip()
-        if _is_heading_candidate(candidate):
-            return candidate
-
     return ""
 
 
+def _text_lines(page: pymupdf.Page) -> list[list[list[dict[str, Any]]]]:
+    """Return the text blocks of the page, top to bottom, as lines of spans."""
+    try:
+        blocks = page.get_text("dict", sort=True).get("blocks", [])
+    except Exception:
+        return []
+    return [
+        [line.get("spans", []) for line in block.get("lines", [])]
+        for block in blocks
+        if isinstance(block, dict) and block.get("type") == 0
+    ]
+
+
+def _body_font_size(pdf: pymupdf.Document) -> float:
+    """Return the font size that covers the most characters in the document."""
+    char_counts: dict[float, int] = {}
+    for page in pdf:
+        for lines in _text_lines(page):
+            for spans in lines:
+                for span in spans:
+                    size = round(float(span.get("size", 0.0)), 1)
+                    char_counts[size] = char_counts.get(size, 0) + len(str(span.get("text", "")).strip())
+    return max(char_counts, key=char_counts.__getitem__) if char_counts else 0.0
+
+
+def _extract_font_headings(
+    page: pymupdf.Page, body_size: float, repeated_lines: set[str]
+) -> list[str]:
+    """Return headings on the page, recognised by a font clearly larger than body text.
+
+    Only the large spans of a block are kept, so a heading printed in the same
+    block as its subtitle does not swallow the subtitle.
+    """
+    if body_size <= 0:
+        return []
+    min_size = body_size * HEADING_FONT_RATIO
+    fragments: list[str] = []
+    previous_was_heading = False
+    for lines in _text_lines(page):
+        # Spans of one line can split a word, so they are joined without spaces.
+        heading = _normalize_line(
+            " ".join(
+                "".join(
+                    str(span.get("text", ""))
+                    for span in spans
+                    if float(span.get("size", 0.0)) >= min_size
+                )
+                for spans in lines
+            )
+        )
+        if not heading or _line_key(heading) in repeated_lines:
+            previous_was_heading = False
+            continue
+        # A long heading wrapped over two blocks ("B. Diễn biến kinh tế" + "gần đây").
+        if previous_was_heading and _continues_heading(fragments[-1], heading):
+            fragments[-1] = f"{fragments[-1]} {heading}"
+        else:
+            fragments.append(heading)
+        previous_was_heading = True
+    return [heading for heading in fragments if _is_heading_candidate(heading)]
+
+
+def _continues_heading(previous: str, current: str) -> bool:
+    return (
+        current[0].islower()
+        or previous.endswith((",", "-", "–"))
+        or previous.lower().endswith(HEADING_CONTINUATION_WORDS)
+    )
+
+
 def _is_heading_candidate(text: str) -> bool:
-    if not text:
+    if not text or not any(char.isalpha() for char in text):
+        return False
+    lowered = text.lower()
+    if lowered.startswith(HEADING_EXCLUDED_PREFIXES) or "nguồn:" in lowered:
         return False
     words = text.split()
+    # Chart axes such as "2024 2025e 2026f" are mostly numbers.
+    if sum(1 for word in words if word[0].isalpha()) * 2 < len(words):
+        return False
     return len(words) <= 14 and len(text) <= 140
 
 
@@ -217,6 +304,110 @@ def _int_value(value: Any) -> int:
         return 0
 
 
+def _normalize_line(line: str) -> str:
+    return re.sub(r"\s+", " ", line).strip()
+
+
+def _line_key(line: str) -> str:
+    """Compare lines without a page number glued to either end.
+
+    Running headers often carry the page number on the same line
+    ("12 Cập nhật ..."), so the raw line differs on every page.
+    """
+    return PAGE_NUMBER_PATTERN.sub("", _normalize_line(line))
+
+
+def _extract_page_text(page: pymupdf.Page) -> str:
+    """Return the page text with one text block per paragraph.
+
+    Blocks are separated by a blank line so chunking can split on real
+    paragraphs instead of falling back to sentences.
+    """
+    blocks = [
+        str(block[4]).strip()
+        for block in page.get_text("blocks")
+        if len(block) > 6 and block[6] == 0 and str(block[4]).strip()
+    ]
+    return "\n\n".join(blocks)
+
+
+def _find_repeated_lines(page_texts: list[str]) -> set[str]:
+    """Return line keys that repeat across many pages, such as running headers."""
+    page_counts: dict[str, int] = {}
+    for text in page_texts:
+        for line in {_line_key(line) for line in text.splitlines()}:
+            if len(line) >= BOILERPLATE_MIN_CHARS:
+                page_counts[line] = page_counts.get(line, 0) + 1
+
+    min_pages = max(BOILERPLATE_MIN_PAGES, round(len(page_texts) * BOILERPLATE_PAGE_RATIO))
+    return {line for line, count in page_counts.items() if count >= min_pages}
+
+
+def _strip_boilerplate(text: str, repeated_lines: set[str]) -> tuple[str, int]:
+    """Remove running headers/footers, page numbers at the page edges and stamps.
+
+    These lines carry no content but appear in many chunks, which pulls every
+    chunk towards queries that mention the document title. Paragraphs
+    (separated by blank lines) are kept, and the PDF line wraps inside each
+    paragraph are joined with spaces.
+    """
+    paragraph_ids: list[int] = []
+    lines: list[str] = []
+    for paragraph_id, paragraph in enumerate(re.split(r"\n\s*\n", text)):
+        for line in map(_normalize_line, paragraph.splitlines()):
+            if line:
+                paragraph_ids.append(paragraph_id)
+                lines.append(line)
+    line_counts: dict[str, int] = {}
+    for line in lines:
+        line_counts[line] = line_counts.get(line, 0) + 1
+
+    def is_stamp(line: str) -> bool:
+        return (
+            len(line) >= BOILERPLATE_MIN_CHARS
+            and line_counts[line] >= BOILERPLATE_REPEATS_PER_PAGE
+        )
+
+    def is_edge_noise(line: str, distance_from_edge: int) -> bool:
+        # Stamps only count at the page edges: inside the page a repeated line is
+        # usually real content, such as the same figure source under several charts.
+        if _line_key(line) in repeated_lines or is_stamp(line):
+            return True
+        return line.isdigit() and distance_from_edge < PAGE_EDGE_LINES
+
+    start = 0
+    while start < len(lines) and is_edge_noise(lines[start], start):
+        start += 1
+    end = len(lines)
+    while end > start and is_edge_noise(lines[end - 1], len(lines) - end):
+        end -= 1
+
+    paragraphs: dict[int, list[str]] = {}
+    for index in range(start, end):
+        if _line_key(lines[index]) not in repeated_lines:
+            paragraphs.setdefault(paragraph_ids[index], []).append(lines[index])
+    removed = len(lines) - sum(len(paragraph) for paragraph in paragraphs.values())
+    return "\n\n".join(_join_wrapped_lines(paragraph) for paragraph in paragraphs.values()), removed
+
+
+def _join_wrapped_lines(lines: list[str]) -> str:
+    """Join lines the PDF wrapped at the margin; keep breaks after short lines.
+
+    A long line that stops mid-sentence was wrapped, while short lines are
+    titles or labels ("Cập nhật Tình hình Kinh tế" / "Kiên định Cải cách,")
+    whose line breaks carry structure the LLM needs.
+    """
+    text = lines[0] if lines else ""
+    for previous, line in zip(lines, lines[1:]):
+        wrapped = len(previous) >= WRAPPED_LINE_MIN_CHARS
+        text += (" " if wrapped else "\n") + line
+    return text
+
+
+def _should_strip_boilerplate() -> bool:
+    return os.getenv("DOCUMENT_STRIP_BOILERPLATE", "true").lower() == "true"
+
+
 def _should_export_images() -> bool:
     return os.getenv("DOCUMENT_IMAGE_EXPORT", "true").lower() == "true"
 
@@ -232,8 +423,7 @@ def _resolve_image_output_dir(image_output_dir: str | Path | None) -> Path | Non
         configured_dir = os.getenv("IMAGE_OUTPUT_DIR")
         image_output_dir = configured_dir if configured_dir else DEFAULT_IMAGE_OUTPUT_DIR
 
-    output_dir = Path(image_output_dir)
-    return output_dir if output_dir.is_absolute() else PROJECT_ROOT / output_dir
+    return resolve_path(image_output_dir)
 
 
 def _safe_extension(extension: str | None) -> str:
@@ -387,8 +577,13 @@ def _extract_images(
 def load_pdf_document(
     pdf_path: str | Path,
     image_output_dir: str | Path | None = None,
+    strip_boilerplate: bool | None = None,
 ) -> Document:
-    """Load a PDF into a structured Document object."""
+    """Load a PDF into a structured Document object.
+
+    ``strip_boilerplate`` removes running headers/footers and page numbers;
+    ``None`` reads DOCUMENT_STRIP_BOILERPLATE (default true).
+    """
     path = Path(pdf_path)
     if not path.exists():
         raise FileNotFoundError(f"PDF not found: {path}")
@@ -412,12 +607,29 @@ def load_pdf_document(
             pdf_metadata = _clean_metadata(pdf.metadata or {})
             pages: list[DocumentPage] = []
             skipped_image_count = 0
+            raw_page_texts = [_extract_page_text(page) for page in pdf]
+            if strip_boilerplate is None:
+                strip_boilerplate = _should_strip_boilerplate()
+            repeated_lines = _find_repeated_lines(raw_page_texts) if strip_boilerplate else set()
+            body_font_size = _body_font_size(pdf)
+            current_section = ""
 
             for page_number, page in enumerate(pdf, start=1):
-                text = page.get_text("text").strip()
+                text = raw_page_texts[page_number - 1].strip()
+                removed_line_count = 0
+                if strip_boilerplate:
+                    text, removed_line_count = _strip_boilerplate(text, repeated_lines)
                 layout_blocks, layout_counts = _extract_page_layout(page)
                 tables = _extract_page_tables(page)
-                section_title = _extract_page_heading(text, layout_blocks)
+                # A page without a heading continues the section of the previous page.
+                font_headings = _extract_font_headings(page, body_font_size, repeated_lines)
+                # The lowest heading on the page is the most specific one, e.g. the
+                # section "Bối cảnh toàn cầu" below the chapter "A. Tình hình thế giới".
+                section_title = (
+                    font_headings[-1] if font_headings else current_section
+                ) or _extract_page_heading(text)
+                if font_headings:
+                    current_section = font_headings[-1]
                 page_rect = page.rect
                 images, skipped_on_page = _extract_images(
                     pdf=pdf,
@@ -444,6 +656,7 @@ def load_pdf_document(
                             metadata={
                                 "char_count": len(text),
                                 "word_count": len(text.split()),
+                                "boilerplate_line_count": removed_line_count,
                                 "searchable_char_count": len(searchable_text),
                                 "searchable_word_count": len(searchable_text.split()),
                                 "image_count": len(images),
@@ -480,6 +693,7 @@ def load_pdf_document(
             "page_count": len(pages),
             "image_count": sum(len(page.images) for page in pages),
             "skipped_image_count": skipped_image_count,
+            "boilerplate_lines": sorted(repeated_lines),
             "document_id_strategy": "sha256_file_content_16",
             "content_hash": content_hash,
             "image_output_dir": (
@@ -493,6 +707,6 @@ def load_pdf_document(
     )
 
 
-def load_pdf(pdf_path: str | Path) -> list[PageRecord]:
+def load_pdf(pdf_path: str | Path, strip_boilerplate: bool | None = None) -> list[PageRecord]:
     """Extract page records from a PDF file for chunking."""
-    return load_pdf_document(pdf_path).to_chunk_inputs()
+    return load_pdf_document(pdf_path, strip_boilerplate=strip_boilerplate).to_chunk_inputs()

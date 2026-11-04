@@ -4,12 +4,10 @@ import time
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
-
 from ..chunking import SUPPORTED_CHUNKING_STRATEGIES, split_documents
+from ..core import DEFAULT_STORAGE_DIR, default_pdf_path, default_questions_path, load_env, resolve_path
 from ..documents import load_pdf
 from ..embeddings import DEFAULT_EMBEDDING_MODEL, EmbeddingService
-from ..paths import PROJECT_ROOT, default_pdf_path, default_questions_path, resolve_path
 from ..retrieval import VectorStore
 from .common import mean_metrics, metric_headers, print_table, require_inputs
 from .metrics import evaluate_results, mean
@@ -42,7 +40,7 @@ def _run_strategy(
         min_chunk_size=args.min_chunk_size,
     )
     document_embeddings = embedder.embed_documents(chunks)
-    store = VectorStore(PROJECT_ROOT / "storage" / "chunking_benchmark" / strategy)
+    store = VectorStore(DEFAULT_STORAGE_DIR / "chunking_benchmark" / strategy)
     store.build(document_embeddings, chunks)
     build_seconds = time.perf_counter() - build_started
 
@@ -68,7 +66,7 @@ def _run_strategy(
 
 
 def main() -> None:
-    load_dotenv(PROJECT_ROOT / ".env")
+    load_env()
 
     parser = argparse.ArgumentParser(description="Benchmark chunking strategies")
     parser.add_argument("--pdf", type=Path, default=default_pdf_path())

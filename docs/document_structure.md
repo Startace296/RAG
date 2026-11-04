@@ -23,6 +23,25 @@ PDF file
 
 Ý tưởng chính: file gốc được biểu diễn bằng một `Document`, mỗi trang là một `DocumentPage`, còn ảnh trong trang được ghi nhận bằng `DocumentImage`. Khi cần chunking, `Document` được chuyển sang page records để tương thích với pipeline hiện tại.
 
+## Trích text theo đoạn văn
+
+Mỗi trang được đọc bằng `page.get_text("blocks")`: mỗi text block của PyMuPDF tương ứng một đoạn văn, tiêu đề hoặc nhãn hình. Các block được nối bằng một dòng trống, còn các dòng bị PDF ngắt giữa câu trong cùng block được nối lại bằng dấu cách. Nhờ vậy chiến lược `recursive` chia được theo đoạn văn thật, thay vì chỉ cắt theo câu.
+
+## Làm sạch header/footer
+
+Khi `DOCUMENT_STRIP_BOILERPLATE=true` (mặc định), `load_pdf_document()` bỏ các dòng không mang nội dung trước khi chunking:
+
+- Dòng dài từ 15 ký tự, xuất hiện trên ít nhất 30% số trang (tối thiểu 3 trang), ví dụ header "Cập nhật Tình hình Kinh tế Việt Nam • Tháng 5/2026". Khi so sánh, số trang dính ở đầu hoặc cuối dòng ("12 Cập nhật ...") được bỏ qua.
+- Số trang và dòng lặp từ 3 lần trở lên trong cùng một trang, nhưng chỉ ở đầu hoặc cuối trang (ví dụ "Public Disclosure Authorized"). Dòng lặp nằm giữa trang, như "Nguồn: ..." dưới nhiều hình, được giữ lại.
+
+Nếu để lại, header lặp làm mọi chunk có điểm gần như bằng nhau với câu hỏi nhắc tên báo cáo. Số dòng bị bỏ được ghi vào `metadata.boilerplate_line_count` của từng trang, còn danh sách header được ghi vào `Document.metadata.boilerplate_lines`.
+
+## Tiêu đề mục (`section_title`)
+
+Tiêu đề mục được nhận diện theo cỡ chữ: span có cỡ chữ từ 1.4 lần cỡ chữ thân bài trở lên (cỡ chữ phổ biến nhất trong tài liệu) là tiêu đề. Tên biểu đồ, dòng "Nguồn:" và nhãn trục số bị loại. Tiêu đề bị ngắt sang block sau ("B. Diễn biến kinh tế" + "gần đây") được ghép lại. Trang không có tiêu đề mới kế thừa tiêu đề của trang trước, vì nó đang tiếp nối cùng một mục.
+
+Khi thay đổi cách trích text, tăng `DOCUMENT_PARSER_VERSION` trong `pdf_loader.py`. Giá trị này được ghi vào `index_config.json`, nên index cũ sẽ tự build lại.
+
 ## Document
 
 `Document` đại diện cho toàn bộ tài liệu gốc trước khi chia nhỏ thành chunk.

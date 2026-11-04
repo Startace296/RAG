@@ -244,7 +244,7 @@ def _pack_units(
 
         if len(unit_words) > chunk_size:
             if current_units:
-                chunks.append(" ".join(current_units).strip())
+                chunks.append(_join_units(current_units))
                 current_units = []
                 current_word_count = 0
             chunks.extend(_split_words(unit_words, chunk_size, chunk_overlap))
@@ -253,17 +253,22 @@ def _pack_units(
         would_exceed = current_word_count + len(unit_words) > chunk_size
         has_enough_context = current_word_count >= min_chunk_size
         if current_units and would_exceed and has_enough_context:
-            chunks.append(" ".join(current_units).strip())
+            chunks.append(_join_units(current_units))
             current_units = _overlap_tail(current_units, chunk_overlap)
-            current_word_count = len(" ".join(current_units).split())
+            current_word_count = len(_join_units(current_units).split())
 
         current_units.append(unit)
         current_word_count += len(unit_words)
 
     if current_units:
-        chunks.append(" ".join(current_units).strip())
+        chunks.append(_join_units(current_units))
 
     return [chunk for chunk in chunks if chunk]
+
+
+def _join_units(units: list[str]) -> str:
+    """Join packed units on separate lines so titles and paragraphs stay apart."""
+    return "\n".join(units).strip()
 
 
 def _split_semantic_units(

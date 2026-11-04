@@ -6,6 +6,8 @@ from typing import Any, Mapping, Sequence, TypedDict
 import faiss
 import numpy as np
 
+from .bm25 import BM25Index
+
 
 class SearchImageRef(TypedDict, total=False):
     """Image reference attached to a retrieved chunk."""
@@ -29,6 +31,10 @@ class SearchResult(TypedDict, total=False):
     document_chunk_index: int
     chunk_index: int
     similarity_score: float
+    position: int
+    keyword_rank: int
+    hybrid_score: float
+    rerank_score: float
     document_id: str
     word_count: int
     token_count: int
@@ -75,6 +81,7 @@ class VectorStore:
         self._validate_index_args()
         self.index: faiss.Index | None = None
         self.metadata: list[dict[str, Any]] = []
+        self._keyword_index: BM25Index | None = None
 
     def build(self, embeddings: np.ndarray, chunks: Sequence[Mapping[str, Any]]) -> None:
         """Build a FAISS index from embeddings and keep chunk metadata.
@@ -97,6 +104,7 @@ class VectorStore:
             raise ValueError("embeddings and chunks must have the same length")
 
         self.index = self._build_index(vectors)
+        self._keyword_index = None
         self.metadata = [
             {
                 "chunk_id": str(chunk.get("chunk_id", "")),
@@ -147,6 +155,7 @@ class VectorStore:
         self._warn_on_config_mismatch()
         self._apply_search_parameters(self.index)
         self.metadata = json.loads(self.metadata_path.read_text(encoding="utf-8"))
+        self._keyword_index = None
         if self.index.ntotal != len(self.metadata):
             raise ValueError("FAISS index and metadata do not have the same length")
 
@@ -194,6 +203,7 @@ class VectorStore:
                         metadata.get("document_chunk_index", metadata["chunk_index"])
                     ),
                     "similarity_score": float(score),
+                    "position": int(position),
                     "document_id": str(metadata.get("document_id", "")),
                     "word_count": int(metadata.get("word_count", 0)),
                     "token_count": int(metadata.get("token_count", 0)),
@@ -209,6 +219,15 @@ class VectorStore:
             )
 
         return results
+
+    def keyword_ranks(self, query: str) -> np.ndarray:
+        """Return the 1-based BM25 rank of every stored chunk for ``query``.
+
+        The keyword index is built from the chunk texts on first use.
+        """
+        if self._keyword_index is None or len(self._keyword_index) != len(self.metadata):
+            self._keyword_index = BM25Index([str(item["text"]) for item in self.metadata])
+        return self._keyword_index.ranks(query)
 
     @staticmethod
     def _coerce_image_refs(value: Any) -> list[SearchImageRef]:

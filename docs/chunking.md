@@ -35,7 +35,7 @@ MIN_CHUNK_SIZE=50
 Sau khi đổi cấu hình chunking, cần rebuild index:
 
 ```powershell
-python -m src.main --rebuild
+python -m src.app.main --rebuild
 ```
 
 Nếu không rebuild, hệ thống vẫn dùng `index.faiss` và `metadata.json` đã tạo từ cấu hình cũ.
@@ -186,43 +186,43 @@ DocumentPage.text + DocumentPage.images
 Dùng script retrieval test:
 
 ```powershell
-python -m src.retrieval_test --chunking-strategy recursive
+python -m src.scripts.retrieval_test --chunking-strategy recursive
 ```
 
 Thử baseline fixed word:
 
 ```powershell
-python -m src.retrieval_test --chunking-strategy fixed_word
+python -m src.scripts.retrieval_test --chunking-strategy fixed_word
 ```
 
 Thử sentence:
 
 ```powershell
-python -m src.retrieval_test --chunking-strategy sentence
+python -m src.scripts.retrieval_test --chunking-strategy sentence
 ```
 
 Thử paragraph:
 
 ```powershell
-python -m src.retrieval_test --chunking-strategy paragraph
+python -m src.scripts.retrieval_test --chunking-strategy paragraph
 ```
 
 Thử semantic:
 
 ```powershell
-python -m src.retrieval_test --chunking-strategy semantic
+python -m src.scripts.retrieval_test --chunking-strategy semantic
 ```
 
 Thử parent-child:
 
 ```powershell
-python -m src.retrieval_test --chunking-strategy parent_child
+python -m src.scripts.retrieval_test --chunking-strategy parent_child
 ```
 
 Thử sliding window:
 
 ```powershell
-python -m src.retrieval_test --chunking-strategy sliding_window
+python -m src.scripts.retrieval_test --chunking-strategy sliding_window
 ```
 
 Kết quả retrieval sẽ in thêm:
@@ -292,7 +292,7 @@ Nên dùng khi:
 
 ## Đánh Giá Định Lượng Cần Bổ Sung
 
-Project có benchmark runner ở `src/chunking_benchmark.py`. Benchmark đọc câu hỏi từ file trong biến `EVALUATION_QUESTIONS` của `.env`, mặc định là `evaluation/kinhtevn_questions.jsonl` cho `KinhteVN.pdf`. Bộ `evaluation/chunking_questions.jsonl` là câu hỏi về tài liệu học máy cũ, chỉ dùng khi PDF đầu vào là tài liệu đó. Benchmark đo:
+Project có benchmark runner ở `src/benchmarks/chunking_benchmark.py`. Benchmark đọc câu hỏi từ file trong biến `EVALUATION_QUESTIONS` của `.env`, mặc định là `evaluation/kinhtevn_questions.jsonl` cho `KinhteVN.pdf`. Benchmark đo:
 
 - `Recall@k`: câu hỏi có retrieve được trang/chunk đúng trong top-k không.
 - `MRR`: chunk đúng xuất hiện ở rank bao nhiêu.
@@ -302,36 +302,69 @@ Project có benchmark runner ở `src/chunking_benchmark.py`. Benchmark đọc c
 - Thời gian build index.
 - Thời gian retrieval.
 
-Bảng benchmark mong muốn:
+### Kết Quả Thực Nghiệm
+
+Cấu hình: `KinhteVN.pdf` (31 trang), 29 câu hỏi trong `evaluation/kinhtevn_questions.jsonl`, embedding `intfloat/multilingual-e5-small` trên CPU, FAISS `flat`, dense retrieval (không hybrid), `top_k=5`.
 
 ```text
-strategy    chunk_size overlap chunks recall@5 mrr   latency
-fixed_word  300        50      720    0.62     0.41  1.2s
-sentence    300        50      690    0.68     0.45  1.3s
-paragraph   300        50      610    0.66     0.44  1.1s
-recursive   300        50      675    0.71     0.48  1.4s
+strategy        chunk_size  overlap  chunks  queries   hit@5  precision@5  recall@5     mrr  ndcg@5  build_s  retrieval_ms
+--------------  ----------  -------  ------  -------  ------  -----------  --------  ------  ------  -------  ------------
+fixed_word             300       50      84       29  0.8966       0.2345    0.8793  0.7379  0.7631   8.9217        0.1514
+sentence               300       50      85       29  0.9310       0.2345    0.9138  0.7500  0.7779   7.9184        0.1653
+paragraph              300       50     108       29  0.9655       0.3034    0.9655  0.8575  0.8660  10.0416        0.1529
+recursive              300       50     107       29  0.9655       0.3034    0.9655  0.8575  0.8660   9.7645        0.1591
+semantic               300       50     185       29  0.9310       0.2483    0.9138  0.8017  0.8231   7.9372        0.1901
+parent_child           300       50      95       29  0.8966       0.2552    0.8793  0.7580  0.7765   8.3771        0.1742
+sliding_window         300       50      84       29  0.8966       0.2345    0.8793  0.7379  0.7631   7.8338        0.1594
 ```
-Ý nghĩa từng cột:
-- strategy: thuật toán chia chunk đang test.
-- chunk_size: số từ tối đa mục tiêu trong một chunk.
-- overlap: số từ/ngữ cảnh lặp lại giữa hai chunk liền nhau.
-- chunks: tổng số chunk tạo ra từ tài liệu.
-- recall@5: trong top 5 kết quả retrieve, có tìm được chunk/trang đúng không. Càng cao càng tốt.
-- mrr: chunk đúng xuất hiện ở vị trí càng cao thì điểm càng cao. Càng cao càng tốt.
-- latency: thời gian retrieval hoặc build/test. Càng thấp càng tốt.
 
-Các số trên là ví dụ định dạng, chưa phải kết quả thực nghiệm.
+Ý nghĩa từng cột:
+- `strategy`: thuật toán chia chunk đang test.
+- `chunk_size`: số từ tối đa mục tiêu trong một chunk.
+- `overlap`: số từ/ngữ cảnh lặp lại giữa hai chunk liền nhau.
+- `chunks`: tổng số chunk tạo ra từ tài liệu.
+- `queries`: số câu hỏi đánh giá.
+- `hit@5`: tỷ lệ câu hỏi có ít nhất một chunk liên quan trong top 5.
+- `precision@5`: tỷ lệ chunk liên quan trong 5 chunk trả về.
+- `recall@5`: tỷ lệ trang nhãn được phủ bởi ít nhất một chunk liên quan trong top 5.
+- `mrr`: chunk liên quan đầu tiên đứng càng cao thì điểm càng cao (rank 1 = 1.0, rank 2 = 0.5, ...).
+- `ndcg@5`: chất lượng thứ hạng của cả top 5.
+- `build_s`: thời gian chunk + embed + build index (giây).
+- `retrieval_ms`: thời gian tìm kiếm trung bình mỗi câu hỏi (mili giây).
+
+Quy đổi ra số câu hỏi (mỗi câu ≈ 0.0345 `hit@5`):
+
+| Strategy | Trúng top 5 / 29 | MRR |
+| --- | --- | --- |
+| recursive | 28 | 0.858 |
+| paragraph | 28 | 0.858 |
+| semantic | 27 | 0.802 |
+| sentence | 27 | 0.750 |
+| parent_child | 26 | 0.758 |
+| fixed_word | 26 | 0.738 |
+| sliding_window | 26 | 0.738 |
+
+Nhận xét:
+
+- **Tôn trọng ranh giới đoạn văn giúp ích rõ rệt.** `recursive`/`paragraph` nâng MRR từ 0.74 lên 0.86 so với baseline chia theo từ: chunk đúng thường lên rank 1 thay vì rank 2–3. `hit@5` chỉ chênh 2 câu, nhưng MRR và nDCG cùng chỉ một hướng.
+- **`recursive` bằng `paragraph`** vì recursive ưu tiên chia theo đoạn và chỉ chia nhỏ khi đoạn vượt `CHUNK_SIZE`. Với PDF này chỉ có khoảng một đoạn như vậy (107 so với 108 chunk). `recursive` vẫn an toàn hơn vì `paragraph` có thể tạo chunk vượt giới hạn (ví dụ chunk 411 từ ở trang 9).
+- **`fixed_word` và `sliding_window` giống nhau hoàn toàn** vì hiện dùng chung một nhánh code (`src/chunking/strategies.py`) với cùng `CHUNK_OVERLAP`.
+- **`parent_child` gần như không hơn baseline** vì benchmark chỉ đo retrieval trên child chunk, vốn được chia theo từ. Lợi ích đưa parent vào context cho LLM không được đo ở đây.
+- **`semantic`** có MRR tốt thứ hai nhưng tạo nhiều chunk nhất (185), dễ sinh chunk vụn như mục lục.
+- **`precision@5` thấp (0.23–0.30) là bình thường**: mỗi câu hỏi chỉ có 1–2 trang nhãn, nên phần lớn top 5 luôn bị tính là không liên quan. Chỉ dùng để so sánh tương đối.
+- **Tốc độ không phải yếu tố quyết định**: retrieval ~0.15–0.19 ms; `build_s` chủ yếu là thời gian embed, chênh lệch giữa các strategy nằm trong nhiễu đo.
+- **Độ tin cậy**: với 29 câu hỏi, chênh 1–2 câu chưa có ý nghĩa thống kê. Kết luận "recursive/paragraph tốt hơn nhóm chia theo từ" là đáng tin; thứ tự giữa `semantic` và `sentence` thì chưa.
 
 Chạy benchmark:
 
 ```powershell
-python -m src.chunking_benchmark
+python -m src.benchmarks.chunking_benchmark
 ```
 
 Chạy một nhóm strategy cụ thể:
 
 ```powershell
-python -m src.chunking_benchmark --strategies recursive semantic parent_child
+python -m src.benchmarks.chunking_benchmark --strategies recursive semantic parent_child
 ```
 
 Format câu hỏi benchmark:
@@ -356,10 +389,11 @@ Hiện tại đã đạt phần:
 - Có khi nào sử dụng loại nào.
 - Có lệnh test thủ công.
 - Có benchmark runner tự động.
+- Có bảng kết quả thực nghiệm thật trên `KinhteVN.pdf` với 29 câu hỏi có ground truth.
 
 Chưa đạt hoàn toàn phần:
-- Dataset câu hỏi chuẩn đã được gắn ground truth đầy đủ.
-- Bảng kết quả thực nghiệm thật sau khi chạy benchmark trên máy.
-- Bảng kết quả thực nghiệm thật.
+- Bộ câu hỏi còn nhỏ (29 câu) và chỉ cho một tài liệu, nên chênh lệch nhỏ giữa các strategy chưa có ý nghĩa thống kê.
+- Chưa benchmark các giá trị `CHUNK_SIZE`/`CHUNK_OVERLAP` khác, và chưa đo với hybrid retrieval.
+- `sliding_window` chưa khác biệt thực sự với `fixed_word`.
 
-Project đã cải thiện chunking từ fixed word đơn giản sang hệ thống có nhiều strategy và metadata truy vết. Strategy mặc định hiện là `recursive` vì cân bằng tốt giữa giữ ngữ nghĩa và kiểm soát kích thước chunk.
+Project đã cải thiện chunking từ fixed word đơn giản sang hệ thống có nhiều strategy và metadata truy vết. Strategy mặc định là `recursive`. Benchmark cho thấy nó đạt kết quả tốt nhất (hit@5 0.9655, MRR 0.8575, bằng `paragraph`) và kiểm soát kích thước chunk tốt hơn `paragraph`.

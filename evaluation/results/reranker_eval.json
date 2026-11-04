@@ -1,0 +1,1549 @@
+{
+  "reranker_model": "E:\\All in\\RAG\\rag\\storage\\models\\bge-reranker-v2-m3",
+  "configs": {
+    "dense": {
+      "summary": {
+        "questions": 29,
+        "page_hit_rate": 0.9655172413793104,
+        "mrr": 0.8804597701149426,
+        "context_keyword_ratio": 0.9568965517241379,
+        "avg_retrieve_ms": 19.03259648202822
+      },
+      "questions": [
+        {
+          "id": "kinhtevn_001",
+          "pages": [
+            30,
+            16,
+            29,
+            5,
+            9
+          ],
+          "page_hit": false,
+          "reciprocal_rank": 0.0,
+          "keyword_ratio": 0.0
+        },
+        {
+          "id": "kinhtevn_002",
+          "pages": [
+            5,
+            8,
+            5
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_003",
+          "pages": [
+            8,
+            4,
+            28,
+            7,
+            8
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_004",
+          "pages": [
+            9,
+            14,
+            9,
+            28,
+            14
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_005",
+          "pages": [
+            28,
+            9,
+            28,
+            9,
+            13
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 0.5,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_006",
+          "pages": [
+            29,
+            9,
+            9,
+            29,
+            9
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_007",
+          "pages": [
+            10,
+            10,
+            30,
+            9,
+            12
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_008",
+          "pages": [
+            11,
+            11,
+            16,
+            16,
+            10
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 0.2,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_009",
+          "pages": [
+            11,
+            11,
+            9,
+            21,
+            16
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_010",
+          "pages": [
+            12,
+            12,
+            12,
+            10,
+            30
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_011",
+          "pages": [
+            9,
+            9,
+            13,
+            29,
+            9
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 0.3333333333333333,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_012",
+          "pages": [
+            14,
+            14,
+            13,
+            20,
+            15
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_013",
+          "pages": [
+            15,
+            28,
+            9,
+            29,
+            13
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_014",
+          "pages": [
+            19,
+            17,
+            31,
+            31,
+            13
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 0.5,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_015",
+          "pages": [
+            18,
+            18,
+            17,
+            13,
+            17
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 0.75
+        },
+        {
+          "id": "kinhtevn_016",
+          "pages": [
+            19,
+            7,
+            7,
+            7,
+            25
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_017",
+          "pages": [
+            20,
+            20,
+            29,
+            30,
+            29
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_018",
+          "pages": [
+            21,
+            16,
+            28,
+            21,
+            13
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_019",
+          "pages": [
+            21,
+            29,
+            16,
+            29,
+            9
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_020",
+          "pages": [
+            22,
+            25,
+            24,
+            16,
+            23
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_021",
+          "pages": [
+            23,
+            23,
+            25,
+            25,
+            9
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_022",
+          "pages": [
+            23,
+            20,
+            26,
+            26,
+            24
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_023",
+          "pages": [
+            24,
+            26,
+            27,
+            20,
+            28
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_024",
+          "pages": [
+            25,
+            25,
+            23,
+            26,
+            25
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_025",
+          "pages": [
+            26,
+            31,
+            31,
+            26,
+            9
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_026",
+          "pages": [
+            27,
+            30,
+            28,
+            13,
+            27
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_027",
+          "pages": [
+            28,
+            9,
+            13,
+            31,
+            9
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_028",
+          "pages": [
+            30,
+            9,
+            9,
+            30,
+            31
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_029",
+          "pages": [
+            31,
+            8,
+            31,
+            31,
+            8
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        }
+      ]
+    },
+    "hybrid": {
+      "summary": {
+        "questions": 29,
+        "page_hit_rate": 1.0,
+        "mrr": 0.9425287356321839,
+        "context_keyword_ratio": 0.9913793103448276,
+        "avg_retrieve_ms": 20.56733451398282
+      },
+      "questions": [
+        {
+          "id": "kinhtevn_001",
+          "pages": [
+            1,
+            5,
+            30,
+            16,
+            16
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_002",
+          "pages": [
+            5,
+            5,
+            8
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_003",
+          "pages": [
+            4,
+            8,
+            8,
+            4,
+            5
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 0.5,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_004",
+          "pages": [
+            9,
+            9,
+            15,
+            5,
+            14
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_005",
+          "pages": [
+            9,
+            28,
+            9,
+            28,
+            27
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_006",
+          "pages": [
+            9,
+            9,
+            29,
+            11,
+            29
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_007",
+          "pages": [
+            10,
+            10,
+            30,
+            9,
+            11
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_008",
+          "pages": [
+            10,
+            10,
+            28,
+            11,
+            16
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_009",
+          "pages": [
+            11,
+            11,
+            21,
+            9,
+            9
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_010",
+          "pages": [
+            12,
+            12,
+            12,
+            31,
+            18
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_011",
+          "pages": [
+            9,
+            9,
+            13,
+            13,
+            29
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 0.3333333333333333,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_012",
+          "pages": [
+            14,
+            20,
+            15,
+            14,
+            9
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_013",
+          "pages": [
+            15,
+            28,
+            15,
+            14,
+            20
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_014",
+          "pages": [
+            17,
+            19,
+            19,
+            17,
+            13
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_015",
+          "pages": [
+            18,
+            18,
+            17,
+            17,
+            11
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 0.75
+        },
+        {
+          "id": "kinhtevn_016",
+          "pages": [
+            19,
+            7,
+            7,
+            8,
+            25
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_017",
+          "pages": [
+            20,
+            20,
+            29,
+            29,
+            30
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_018",
+          "pages": [
+            21,
+            16,
+            21,
+            16,
+            13
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_019",
+          "pages": [
+            21,
+            11,
+            29,
+            11,
+            11
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_020",
+          "pages": [
+            22,
+            25,
+            25,
+            24,
+            25
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_021",
+          "pages": [
+            23,
+            23,
+            25,
+            25,
+            26
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_022",
+          "pages": [
+            23,
+            20,
+            24,
+            23,
+            26
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_023",
+          "pages": [
+            24,
+            20,
+            27,
+            25,
+            23
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_024",
+          "pages": [
+            25,
+            25,
+            23,
+            7,
+            7
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_025",
+          "pages": [
+            26,
+            31,
+            31,
+            26,
+            5
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_026",
+          "pages": [
+            27,
+            20,
+            27,
+            30,
+            13
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_027",
+          "pages": [
+            28,
+            31,
+            9,
+            8,
+            9
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_028",
+          "pages": [
+            30,
+            9,
+            9,
+            29,
+            30
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_029",
+          "pages": [
+            8,
+            31,
+            8,
+            31,
+            31
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 0.5,
+          "keyword_ratio": 1.0
+        }
+      ]
+    },
+    "dense+rerank": {
+      "summary": {
+        "questions": 29,
+        "page_hit_rate": 1.0,
+        "mrr": 0.9770114942528735,
+        "context_keyword_ratio": 0.9913793103448276,
+        "avg_retrieve_ms": 11388.802820656063
+      },
+      "questions": [
+        {
+          "id": "kinhtevn_001",
+          "pages": [
+            1,
+            5,
+            9,
+            9,
+            7
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_002",
+          "pages": [
+            5,
+            5,
+            8
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_003",
+          "pages": [
+            8,
+            8,
+            4,
+            4,
+            5
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_004",
+          "pages": [
+            9,
+            9,
+            14,
+            13,
+            15
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_005",
+          "pages": [
+            9,
+            9,
+            28,
+            28,
+            27
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_006",
+          "pages": [
+            9,
+            9,
+            29,
+            29,
+            11
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_007",
+          "pages": [
+            10,
+            10,
+            9,
+            29,
+            11
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_008",
+          "pages": [
+            10,
+            11,
+            11,
+            21,
+            10
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_009",
+          "pages": [
+            11,
+            11,
+            29,
+            29,
+            9
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_010",
+          "pages": [
+            12,
+            12,
+            10,
+            30,
+            12
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_011",
+          "pages": [
+            13,
+            9,
+            9,
+            13,
+            29
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_012",
+          "pages": [
+            14,
+            20,
+            9,
+            9,
+            15
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_013",
+          "pages": [
+            15,
+            15,
+            9,
+            9,
+            13
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_014",
+          "pages": [
+            17,
+            17,
+            13,
+            19,
+            31
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_015",
+          "pages": [
+            18,
+            18,
+            13,
+            20,
+            11
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 0.75
+        },
+        {
+          "id": "kinhtevn_016",
+          "pages": [
+            19,
+            7,
+            25,
+            7,
+            7
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_017",
+          "pages": [
+            20,
+            20,
+            29,
+            29,
+            27
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_018",
+          "pages": [
+            21,
+            13,
+            13,
+            21,
+            16
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_019",
+          "pages": [
+            21,
+            9,
+            29,
+            9,
+            29
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_020",
+          "pages": [
+            22,
+            25,
+            25,
+            23,
+            24
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_021",
+          "pages": [
+            23,
+            23,
+            25,
+            30,
+            9
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_022",
+          "pages": [
+            23,
+            23,
+            20,
+            13,
+            26
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_023",
+          "pages": [
+            24,
+            23,
+            27,
+            20,
+            23
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_024",
+          "pages": [
+            25,
+            25,
+            23,
+            7,
+            25
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_025",
+          "pages": [
+            26,
+            31,
+            31,
+            26,
+            5
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_026",
+          "pages": [
+            27,
+            27,
+            20,
+            20,
+            27
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_027",
+          "pages": [
+            28,
+            31,
+            8,
+            13,
+            9
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_028",
+          "pages": [
+            9,
+            9,
+            30,
+            30,
+            29
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 0.3333333333333333,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_029",
+          "pages": [
+            31,
+            31,
+            8,
+            31,
+            8
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        }
+      ]
+    },
+    "hybrid+rerank": {
+      "summary": {
+        "questions": 29,
+        "page_hit_rate": 1.0,
+        "mrr": 0.9770114942528735,
+        "context_keyword_ratio": 0.9913793103448276,
+        "avg_retrieve_ms": 11386.76715166918
+      },
+      "questions": [
+        {
+          "id": "kinhtevn_001",
+          "pages": [
+            1,
+            5,
+            9,
+            9,
+            7
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_002",
+          "pages": [
+            5,
+            5,
+            8
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_003",
+          "pages": [
+            8,
+            8,
+            4,
+            4,
+            5
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_004",
+          "pages": [
+            9,
+            9,
+            14,
+            13,
+            15
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_005",
+          "pages": [
+            9,
+            9,
+            28,
+            28,
+            27
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_006",
+          "pages": [
+            9,
+            9,
+            29,
+            29,
+            11
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_007",
+          "pages": [
+            10,
+            10,
+            9,
+            29,
+            11
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_008",
+          "pages": [
+            10,
+            11,
+            11,
+            21,
+            10
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_009",
+          "pages": [
+            11,
+            11,
+            29,
+            29,
+            9
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_010",
+          "pages": [
+            12,
+            12,
+            10,
+            30,
+            12
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_011",
+          "pages": [
+            13,
+            9,
+            9,
+            13,
+            29
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_012",
+          "pages": [
+            14,
+            20,
+            9,
+            9,
+            15
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_013",
+          "pages": [
+            15,
+            15,
+            9,
+            9,
+            13
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_014",
+          "pages": [
+            17,
+            17,
+            13,
+            19,
+            31
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_015",
+          "pages": [
+            18,
+            18,
+            13,
+            20,
+            11
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 0.75
+        },
+        {
+          "id": "kinhtevn_016",
+          "pages": [
+            19,
+            7,
+            25,
+            7,
+            7
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_017",
+          "pages": [
+            20,
+            20,
+            29,
+            29,
+            27
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_018",
+          "pages": [
+            21,
+            13,
+            13,
+            21,
+            16
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_019",
+          "pages": [
+            21,
+            9,
+            29,
+            9,
+            29
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_020",
+          "pages": [
+            22,
+            25,
+            25,
+            23,
+            24
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_021",
+          "pages": [
+            23,
+            23,
+            25,
+            30,
+            9
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_022",
+          "pages": [
+            23,
+            23,
+            20,
+            13,
+            26
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_023",
+          "pages": [
+            24,
+            23,
+            27,
+            20,
+            23
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_024",
+          "pages": [
+            25,
+            25,
+            23,
+            7,
+            25
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_025",
+          "pages": [
+            26,
+            31,
+            31,
+            26,
+            5
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_026",
+          "pages": [
+            27,
+            27,
+            20,
+            20,
+            27
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_027",
+          "pages": [
+            28,
+            31,
+            8,
+            13,
+            9
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_028",
+          "pages": [
+            9,
+            9,
+            30,
+            30,
+            29
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 0.3333333333333333,
+          "keyword_ratio": 1.0
+        },
+        {
+          "id": "kinhtevn_029",
+          "pages": [
+            31,
+            31,
+            8,
+            31,
+            8
+          ],
+          "page_hit": true,
+          "reciprocal_rank": 1.0,
+          "keyword_ratio": 1.0
+        }
+      ]
+    }
+  }
+}

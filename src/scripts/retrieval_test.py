@@ -2,12 +2,10 @@ import argparse
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 from ..chunking import SUPPORTED_CHUNKING_STRATEGIES, split_documents
+from ..core import DEFAULT_STORAGE_DIR, default_pdf_path, load_env, resolve_path
 from ..documents import load_pdf
 from ..embeddings import DEFAULT_EMBEDDING_MODEL, EmbeddingService
-from ..paths import PROJECT_ROOT, default_pdf_path, resolve_path
 from ..retrieval import VectorStore
 
 
@@ -29,7 +27,7 @@ def _print_result(rank: int, result: dict[str, object]) -> None:
 
 def main() -> None:
     """Run a terminal retrieval test without calling an LLM."""
-    load_dotenv(PROJECT_ROOT / ".env")
+    load_env()
 
     parser = argparse.ArgumentParser(description="Test PDF retrieval without calling an LLM")
     parser.add_argument(
@@ -135,7 +133,7 @@ def main() -> None:
 
     print(f"Building FAISS {args.vector_index_type} index...")
     store = VectorStore(
-        PROJECT_ROOT / "storage" / "retrieval_test",
+        DEFAULT_STORAGE_DIR / "retrieval_test",
         index_type=args.vector_index_type,
         hnsw_m=args.faiss_hnsw_m,
         ivf_nlist=args.faiss_ivf_nlist,

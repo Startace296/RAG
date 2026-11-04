@@ -1,39 +1,24 @@
 import os
 import re
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, TypedDict
 
-os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
-os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
-
-import torch
-from dotenv import load_dotenv
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from transformers.utils import logging as transformers_logging
-
 from ..chunking import split_documents
-from ..documents import load_pdf
+from ..core import env_flag, load_env, resolve_path
+from ..documents import DOCUMENT_PARSER_VERSION, load_pdf
 from ..embeddings import DEFAULT_EMBEDDING_MODEL, EmbeddingService
-from ..retrieval import SearchResult, VectorStore
+from ..generation import (
+    DEFAULT_LOCAL_LLM_MODEL,
+    NO_CONTEXT_ANSWER,
+    SYSTEM_PROMPT,
+    LocalLLM,
+    build_answer_prompt,
+)
+from ..retrieval import CrossEncoderReranker, SearchResult, VectorStore
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-NO_CONTEXT_ANSWER = "Tôi không tìm thấy đủ thông tin trong tài liệu để trả lời câu hỏi này."
-DEFAULT_LOCAL_LLM_MODEL = "Qwen/Qwen3-0.6B"
-transformers_logging.set_verbosity_error()
-
-
-@contextmanager
-def _quiet_model_load():
-    if os.getenv("RAG_VERBOSE", "false").lower() == "true":
-        yield
-        return
-
-    with open(os.devnull, "w", encoding="utf-8") as devnull:
-        with redirect_stdout(devnull), redirect_stderr(devnull):
-            yield
+RETRIEVAL_MODES = {"dense", "hybrid"}
 
 
 class Source(TypedDict):
@@ -70,31 +55,16 @@ def _hash_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def build_answer_prompt(context: str, question: str) -> str:
-    """Build the final Vietnamese prompt for answer generation."""
-    return f"""Bạn là trợ lý học tập. Hãy trả lời câu hỏi chỉ dựa trên phần CONTEXT được cung cấp.
-
-Quy tắc:
-
-1. Không sử dụng kiến thức bên ngoài CONTEXT.
-2. Không tự suy đoán hoặc tạo ra thông tin không xuất hiện trong CONTEXT.
-3. Nếu CONTEXT không đủ để trả lời, hãy nói:
-   "{NO_CONTEXT_ANSWER}"
-4. Trả lời bằng tiếng Việt, rõ ràng và dễ hiểu.
-5. Mỗi ý quan trọng phải kèm nguồn theo định dạng [Tên tài liệu, trang X].
-6. Không được tạo nguồn hoặc số trang không có trong CONTEXT.
-
-CONTEXT:
-{context}
-
-QUESTION:
-{question}
-
-ANSWER:"""
+def _model_name_or_path(value: str) -> str:
+    """Resolve a local model folder against the project root; keep Hub names as they are."""
+    value = value.strip()
+    if value and resolve_path(value).is_dir():
+        return str(resolve_path(value))
+    return value
 
 
 class RagService:
-    """Connect PDF loading, chunking, embeddings, FAISS retrieval, and LLM answering."""
+    """Orchestrate the RAG layers: ingestion, chunking, embedding, retrieval, generation."""
 
     def __init__(
         self,
@@ -115,8 +85,14 @@ class RagService:
         similarity_threshold: float = 0.25,
         max_context_chars: int = 12000,
         llm_model: str = DEFAULT_LOCAL_LLM_MODEL,
+        retrieval_mode: str = "hybrid",
+        hybrid_candidates: int = 10,
+        hybrid_rrf_k: int = 60,
+        reranker_model: str = "",
+        reranker_device: str = "cpu",
+        strip_boilerplate: bool = True,
     ):
-        load_dotenv(PROJECT_ROOT / ".env")
+        load_env()
 
         self.pdf_path = Path(pdf_path)
         self.embedding_model = embedding_model
@@ -129,6 +105,19 @@ class RagService:
         self.min_chunk_size = min_chunk_size
         self.similarity_threshold = similarity_threshold
         self.max_context_chars = max_context_chars
+        self.retrieval_mode = retrieval_mode.strip().lower()
+        if self.retrieval_mode not in RETRIEVAL_MODES:
+            supported = ", ".join(sorted(RETRIEVAL_MODES))
+            raise ValueError(f"Unsupported retrieval mode: {retrieval_mode}. Use one of: {supported}")
+        self.hybrid_candidates = max(top_k, hybrid_candidates)
+        self.hybrid_rrf_k = hybrid_rrf_k
+        # An empty model name turns the cross-encoder re-ranking step off.
+        self.reranker = (
+            CrossEncoderReranker(reranker_model.strip(), device=reranker_device)
+            if reranker_model.strip()
+            else None
+        )
+        self.strip_boilerplate = strip_boilerplate
         self.embedder = EmbeddingService(
             embedding_model,
             document_prefix=embedding_document_prefix,
@@ -142,16 +131,12 @@ class RagService:
             ivf_nprobe=faiss_ivf_nprobe,
             pipeline_config=self._pipeline_config(),
         )
-        self.llm_model = llm_model
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.tokenizer = None
-        self.llm = None
-        self.enable_thinking = os.getenv("QWEN_ENABLE_THINKING", "false").lower() == "true"
+        self.llm = LocalLLM(llm_model)
 
     @classmethod
     def from_env(cls, pdf_path: str | Path, storage_dir: str | Path) -> "RagService":
         """Create a service using the settings in ``.env`` and the environment."""
-        load_dotenv(PROJECT_ROOT / ".env")
+        load_env()
         return cls(
             pdf_path=pdf_path,
             storage_dir=storage_dir,
@@ -170,6 +155,12 @@ class RagService:
             similarity_threshold=float(os.getenv("SIMILARITY_THRESHOLD", "0.25")),
             max_context_chars=int(os.getenv("MAX_CONTEXT_CHARS", "12000")),
             llm_model=os.getenv("LOCAL_LLM_MODEL", DEFAULT_LOCAL_LLM_MODEL),
+            retrieval_mode=os.getenv("RETRIEVAL_MODE", "hybrid"),
+            hybrid_candidates=int(os.getenv("HYBRID_CANDIDATES", "10")),
+            hybrid_rrf_k=int(os.getenv("HYBRID_RRF_K", "60")),
+            reranker_model=_model_name_or_path(os.getenv("RERANKER_MODEL", "")),
+            reranker_device=os.getenv("RERANKER_DEVICE", "cpu"),
+            strip_boilerplate=env_flag("DOCUMENT_STRIP_BOILERPLATE", True),
         )
 
     def index_mismatches(self) -> dict[str, tuple[Any, Any]]:
@@ -187,11 +178,13 @@ class RagService:
             "chunk_size": self.chunk_size,
             "chunk_overlap": self.chunk_overlap,
             "min_chunk_size": self.min_chunk_size,
+            "strip_boilerplate": self.strip_boilerplate,
+            "document_parser_version": DOCUMENT_PARSER_VERSION,
         }
 
     def rebuild_index(self) -> None:
         """Load the PDF, create chunks, embed them, and save the FAISS index."""
-        pages = load_pdf(self.pdf_path)
+        pages = load_pdf(self.pdf_path, strip_boilerplate=self.strip_boilerplate)
         chunks = split_documents(
             pages,
             chunk_size=self.chunk_size,
@@ -205,7 +198,7 @@ class RagService:
 
     def warm_up(self) -> None:
         """Load the local LLM before the first user question."""
-        self._load_llm()
+        self.llm.load()
 
     def answer(self, question: str) -> RagResponse:
         """Answer a question using retrieved chunks from the saved FAISS index.
@@ -216,23 +209,71 @@ class RagService:
         if self.store.index is None:
             self.store.load()
 
-        query_embedding = self.embedder.embed_query(question)
-        search_results = self.store.search(query_embedding, top_k=self.top_k)
-        relevant_results = self._deduplicate_results(
-            self._filter_low_similarity(search_results)
-        )
+        relevant_results = self.retrieve(question)
 
         if not relevant_results:
             return {"answer": NO_CONTEXT_ANSWER, "sources": []}
 
         context = self._format_context(relevant_results)
         prompt = build_answer_prompt(context, question)
-        answer = self._call_llm(prompt)
+        answer = self.llm.generate(prompt, system_prompt=SYSTEM_PROMPT)
 
         return {
             "answer": answer,
             "sources": self._build_sources(relevant_results),
         }
+
+    def retrieve(self, question: str) -> list[SearchResult]:
+        """Return up to ``top_k`` chunks that pass the similarity threshold.
+
+        In hybrid mode the dense candidates are re-ranked with Reciprocal Rank
+        Fusion of their dense rank and their BM25 keyword rank. When a reranker
+        model is set, a cross-encoder then gives the final order. The threshold
+        still applies to the dense score, so off-topic questions keep getting
+        no context.
+        """
+        if self.store.index is None:
+            self.store.load()
+
+        reranks = self.retrieval_mode == "hybrid" or self.reranker is not None
+        candidate_count = self.hybrid_candidates if reranks else self.top_k
+        query_embedding = self.embedder.embed_query(question)
+        results = self._filter_low_similarity(
+            self.store.search(query_embedding, top_k=candidate_count)
+        )
+        if self.retrieval_mode == "hybrid" and results:
+            results = self._fuse_keyword_ranks(question, results)
+        results = self._deduplicate_results(results)
+        if self.reranker is not None and results:
+            results = self._rerank(question, results)
+        return results[: self.top_k]
+
+    def _fuse_keyword_ranks(
+        self, question: str, results: list[SearchResult]
+    ) -> list[SearchResult]:
+        keyword_ranks = self.store.keyword_ranks(question)
+        fused: list[SearchResult] = []
+        for dense_rank, result in enumerate(results, start=1):
+            keyword_rank = int(keyword_ranks[result["position"]])
+            fused.append(
+                {
+                    **result,
+                    "keyword_rank": keyword_rank,
+                    "hybrid_score": 1 / (self.hybrid_rrf_k + dense_rank)
+                    + 1 / (self.hybrid_rrf_k + keyword_rank),
+                }
+            )
+        return sorted(fused, key=lambda result: result["hybrid_score"], reverse=True)
+
+    def _rerank(self, question: str, results: list[SearchResult]) -> list[SearchResult]:
+        # Score the text the LLM will read: the parent text when there is one.
+        texts = [str(result.get("parent_text") or result["text"]) for result in results]
+        scores = self.reranker.scores(question, texts)
+        reranked = [
+            {**result, "rerank_score": float(score)} for result, score in zip(results, scores)
+        ]
+        # Stable sort: equal scores keep the dense / hybrid order.
+        return sorted(reranked, key=lambda result: result["rerank_score"], reverse=True)
 
     def _filter_low_similarity(self, results: list[SearchResult]) -> list[SearchResult]:
         return [
@@ -330,59 +371,3 @@ class RagService:
             )
 
         return sources
-
-    def _load_llm(self) -> None:
-        if self.tokenizer is not None and self.llm is not None:
-            return
-
-        with _quiet_model_load():
-            self.tokenizer = AutoTokenizer.from_pretrained(self.llm_model)
-            self.llm = AutoModelForCausalLM.from_pretrained(
-                self.llm_model,
-                dtype=torch.float16 if self.device == "cuda" else torch.float32,
-            ).to(self.device)
-        self.llm.eval()
-
-    def _call_llm(self, prompt: str) -> str:
-        self._load_llm()
-        if self.tokenizer is None or self.llm is None:
-            raise RuntimeError("Local LLM was not loaded.")
-
-        messages = [{"role": "user", "content": prompt}]
-        try:
-            text = self.tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True,
-                enable_thinking=self.enable_thinking,
-            )
-        except TypeError:
-            text = self.tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True,
-            )
-        model_inputs = self.tokenizer([text], return_tensors="pt").to(self.device)
-
-        do_sample = os.getenv("QWEN_DO_SAMPLE", "false").lower() == "true"
-        generation_kwargs = {
-            "max_new_tokens": int(os.getenv("MAX_NEW_TOKENS", "512")),
-            "do_sample": do_sample,
-            "repetition_penalty": float(os.getenv("QWEN_REPETITION_PENALTY", "1.1")),
-            "pad_token_id": self.tokenizer.eos_token_id,
-        }
-        if do_sample:
-            generation_kwargs.update(
-                {
-                    "temperature": float(os.getenv("QWEN_TEMPERATURE", "0.3")),
-                    "top_p": float(os.getenv("QWEN_TOP_P", "0.8")),
-                    "top_k": int(os.getenv("QWEN_TOP_K", "20")),
-                }
-            )
-
-        generated_ids = self.llm.generate(**model_inputs, **generation_kwargs)
-        generated_ids = [
-            output_ids[len(input_ids) :]
-            for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
-        ]
-        return self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()

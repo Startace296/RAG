@@ -1,3 +1,3 @@
-from .rag_service import DEFAULT_LOCAL_LLM_MODEL, RagResponse, RagService
+from .rag_service import RagResponse, RagService, Source
 
-__all__ = ["DEFAULT_LOCAL_LLM_MODEL", "RagResponse", "RagService"]
+__all__ = ["RagResponse", "RagService", "Source"]

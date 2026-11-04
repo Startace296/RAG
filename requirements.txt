@@ -5,3 +5,5 @@ pytesseract
 sentence-transformers
 torch
 transformers
+bitsandbytes
+accelerate

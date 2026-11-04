@@ -9,8 +9,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.app.rag_service import NO_CONTEXT_ANSWER, RagService  # noqa: E402
-from src.paths import DEFAULT_STORAGE_DIR, resolve_path  # noqa: E402
+from src.app import RagService  # noqa: E402
+from src.core import DEFAULT_STORAGE_DIR, resolve_path  # noqa: E402
+from src.generation import NO_CONTEXT_ANSWER  # noqa: E402
 
 
 DEFAULT_QUESTIONS = PROJECT_ROOT / "evaluation" / "kinhtevn_questions.jsonl"

@@ -22,7 +22,7 @@ EMBEDDING_BENCHMARK_MODELS=miniLM-multilingual,mpnet-multilingual,e5-small,e5-ba
 Nếu đổi `EMBEDDING_MODEL`, cần rebuild index:
 
 ```powershell
-python -m src.main --rebuild
+python -m src.app.main --rebuild
 ```
 
 Nếu không rebuild, FAISS index vẫn chứa vector được tạo từ model cũ.
@@ -144,7 +144,7 @@ Nên dùng khi:
 Không nên chọn chỉ bằng cảm tính. Với project này, chọn model dựa trên benchmark:
 
 ```powershell
-python -m src.embedding_benchmark
+python -m src.benchmarks.embedding_benchmark
 ```
 
 Quy tắc chọn thực dụng:
@@ -173,19 +173,19 @@ evaluation/kinhtevn_questions.jsonl
 Chạy toàn bộ model trong `.env`:
 
 ```powershell
-python -m src.embedding_benchmark
+python -m src.benchmarks.embedding_benchmark
 ```
 
 Chạy một vài model:
 
 ```powershell
-python -m src.embedding_benchmark --models e5-small e5-base
+python -m src.benchmarks.embedding_benchmark --models e5-small e5-base
 ```
 
 Chạy bằng raw Hugging Face model name:
 
 ```powershell
-python -m src.embedding_benchmark --models intfloat/multilingual-e5-small
+python -m src.benchmarks.embedding_benchmark --models intfloat/multilingual-e5-small
 ```
 
 Benchmark in các cột:
@@ -228,7 +228,7 @@ EMBEDDING_QUERY_PREFIX=query:
 Sau đó rebuild:
 
 ```powershell
-python -m src.main --rebuild
+python -m src.app.main --rebuild
 ```
 
 ## Trạng Thái Hiện Tại

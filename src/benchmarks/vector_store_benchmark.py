@@ -4,12 +4,10 @@ import time
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
-
 from ..chunking import split_documents
+from ..core import DEFAULT_STORAGE_DIR, default_pdf_path, default_questions_path, load_env, resolve_path
 from ..documents import load_pdf
 from ..embeddings import DEFAULT_EMBEDDING_MODEL, EmbeddingService
-from ..paths import PROJECT_ROOT, default_pdf_path, default_questions_path, resolve_path
 from ..retrieval import VectorStore
 from .common import mean_metrics, metric_headers, print_table, require_inputs
 from .metrics import evaluate_results, mean
@@ -35,7 +33,7 @@ def _run_index(
 ) -> dict[str, Any]:
     build_started = time.perf_counter()
     store = VectorStore(
-        PROJECT_ROOT / "storage" / "vector_store_benchmark" / index_type,
+        DEFAULT_STORAGE_DIR / "vector_store_benchmark" / index_type,
         index_type=index_type,
         hnsw_m=args.faiss_hnsw_m,
         ivf_nlist=args.faiss_ivf_nlist,
@@ -64,7 +62,7 @@ def _run_index(
 
 
 def main() -> None:
-    load_dotenv(PROJECT_ROOT / ".env")
+    load_env()
 
     parser = argparse.ArgumentParser(description="Benchmark FAISS vector store indexes")
     parser.add_argument("--pdf", type=Path, default=default_pdf_path())

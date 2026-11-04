@@ -1,4 +1,4 @@
-from .pdf_loader import load_pdf, load_pdf_document
+from .pdf_loader import DOCUMENT_PARSER_VERSION, load_pdf, load_pdf_document
 from .schemas import (
     Document,
     DocumentImage,
@@ -11,6 +11,7 @@ from .schemas import (
 )
 
 __all__ = [
+    "DOCUMENT_PARSER_VERSION",
     "Document",
     "DocumentImage",
     "DocumentImageMetadata",
