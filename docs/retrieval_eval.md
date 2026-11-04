@@ -6,6 +6,8 @@ Cách hoạt động của hybrid retrieval xem ở [vector_store.md](vector_sto
 
 Để đánh giá reranker (Chương 8), xem mục [So sánh có và không có reranker](#so-sánh-có-và-không-có-reranker).
 
+Để so sánh document model theo trang với document model structured (hình, bảng, hộp, thời điểm, nguồn), chạy `python evaluation/run_document_model_eval.py`; thiết kế và kết quả ở [bao_cao_document_model.md](bao_cao_document_model.md).
+
 ## Script dùng
 
 [`evaluation/run_kinhtevn_rag_eval.py`](../evaluation/run_kinhtevn_rag_eval.py) chạy 29 câu hỏi trong `evaluation/kinhtevn_questions.jsonl` qua `RagService.answer()` và in tổng kết ở cuối.

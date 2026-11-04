@@ -6,6 +6,7 @@ from typing import Any, Mapping, Sequence, TypedDict
 import faiss
 import numpy as np
 
+from ..chunking.metadata import STRUCTURE_FIELDS
 from .bm25 import BM25Index
 
 
@@ -34,6 +35,7 @@ class SearchResult(TypedDict, total=False):
     position: int
     keyword_rank: int
     hybrid_score: float
+    metadata_score: float
     rerank_score: float
     document_id: str
     word_count: int
@@ -46,6 +48,18 @@ class SearchResult(TypedDict, total=False):
     parent_id: str
     parent_text: str
     image_refs: list[SearchImageRef]
+    # Structured document model only (see chunking/metadata.py).
+    element_type: str
+    heading_path: list[str]
+    box_id: str
+    box_title: str
+    figure_no: str
+    table_no: str
+    data_source: str
+    figure_refs: list[str]
+    time_periods: list[str]
+    value_types: list[str]
+    context_header: str
 
 
 class VectorStore:
@@ -61,6 +75,7 @@ class VectorStore:
         ivf_nlist: int = 64,
         ivf_nprobe: int = 8,
         pipeline_config: Mapping[str, Any] | None = None,
+        keyword_context_header: bool = False,
     ):
         """Create a vector store rooted at a local directory.
 
@@ -68,9 +83,12 @@ class VectorStore:
             pipeline_config: Settings used to produce the vectors, such as the
                 embedding model and chunking parameters. They are saved next to
                 the index so a later run can detect a stale index.
+            keyword_context_header: Also index each chunk's ``context_header``
+                (heading path, box, figure) for BM25 keyword search.
         """
         self.storage_dir = Path(storage_dir)
         self.pipeline_config = dict(pipeline_config) if pipeline_config else {}
+        self.keyword_context_header = keyword_context_header
         self.index_path = self.storage_dir / "index.faiss"
         self.metadata_path = self.storage_dir / "metadata.json"
         self.config_path = self.storage_dir / "index_config.json"
@@ -127,6 +145,7 @@ class VectorStore:
                 "parent_id": str(chunk.get("parent_id", "")),
                 "parent_text": str(chunk.get("parent_text", "")),
                 "image_refs": self._coerce_image_refs(chunk.get("image_refs", [])),
+                **{key: chunk[key] for key in STRUCTURE_FIELDS if key in chunk},
             }
             for chunk in chunks
         ]
@@ -166,10 +185,40 @@ class VectorStore:
         and query vectors are normalized by the embedding service, inner product
         is equivalent to cosine similarity.
         """
-        if self.index is None:
-            raise RuntimeError("Load or build the vector index first")
         if top_k <= 0:
             raise ValueError("top_k must be greater than 0")
+
+        query_vector = self._query_vector(query_embedding)
+        scores, positions = self.index.search(query_vector, top_k)
+        return [
+            self._result(int(position), float(score))
+            for score, position in zip(scores[0], positions[0])
+            if position >= 0
+        ]
+
+    def search_positions(
+        self, query_embedding: np.ndarray, positions: Sequence[int], top_k: int = 5
+    ) -> list[SearchResult]:
+        """Rank only the chunks at ``positions`` by exact similarity to the query.
+
+        Approximate indexes (IVF, HNSW) visit part of the index per search, so a
+        search over the whole index can miss chunks a metadata filter needs.
+        Scoring the stored vectors of the filtered chunks directly cannot.
+        """
+        if top_k <= 0:
+            raise ValueError("top_k must be greater than 0")
+        if not positions:
+            return []
+
+        query_vector = self._query_vector(query_embedding)
+        vectors = np.vstack([self.index.reconstruct(int(position)) for position in positions])
+        scores = vectors @ query_vector[0]
+        order = np.argsort(-scores, kind="stable")[:top_k]
+        return [self._result(int(positions[i]), float(scores[i])) for i in order]
+
+    def _query_vector(self, query_embedding: np.ndarray) -> np.ndarray:
+        if self.index is None:
+            raise RuntimeError("Load or build the vector index first")
 
         query_vector = np.asarray(query_embedding, dtype="float32")
         if query_vector.ndim == 1:
@@ -181,44 +230,35 @@ class VectorStore:
                 f"query_embedding dimension {query_vector.shape[1]} does not match "
                 f"FAISS index dimension {self.index.d}"
             )
+        return query_vector
 
-        scores, positions = self.index.search(query_vector, top_k)
-        results: list[SearchResult] = []
-        for score, position in zip(scores[0], positions[0]):
-            if position < 0:
-                continue
-
-            metadata = self.metadata[int(position)]
-            results.append(
-                {
-                    "chunk_id": str(metadata.get("chunk_id", "")),
-                    "text": str(metadata["text"]),
-                    "source": str(metadata["source"]),
-                    "page": int(metadata["page"]),
-                    "chunk_index": int(metadata["chunk_index"]),
-                    "page_chunk_index": int(
-                        metadata.get("page_chunk_index", metadata["chunk_index"])
-                    ),
-                    "document_chunk_index": int(
-                        metadata.get("document_chunk_index", metadata["chunk_index"])
-                    ),
-                    "similarity_score": float(score),
-                    "position": int(position),
-                    "document_id": str(metadata.get("document_id", "")),
-                    "word_count": int(metadata.get("word_count", 0)),
-                    "token_count": int(metadata.get("token_count", 0)),
-                    "char_count": int(metadata.get("char_count", 0)),
-                    "start_word": int(metadata.get("start_word", 0)),
-                    "end_word": int(metadata.get("end_word", 0)),
-                    "section_title": str(metadata.get("section_title", "")),
-                    "chunking_strategy": str(metadata.get("chunking_strategy", "")),
-                    "parent_id": str(metadata.get("parent_id", "")),
-                    "parent_text": str(metadata.get("parent_text", "")),
-                    "image_refs": self._coerce_image_refs(metadata.get("image_refs", [])),
-                }
-            )
-
-        return results
+    def _result(self, position: int, score: float) -> SearchResult:
+        metadata = self.metadata[position]
+        return {
+            "chunk_id": str(metadata.get("chunk_id", "")),
+            "text": str(metadata["text"]),
+            "source": str(metadata["source"]),
+            "page": int(metadata["page"]),
+            "chunk_index": int(metadata["chunk_index"]),
+            "page_chunk_index": int(metadata.get("page_chunk_index", metadata["chunk_index"])),
+            "document_chunk_index": int(
+                metadata.get("document_chunk_index", metadata["chunk_index"])
+            ),
+            "similarity_score": score,
+            "position": position,
+            "document_id": str(metadata.get("document_id", "")),
+            "word_count": int(metadata.get("word_count", 0)),
+            "token_count": int(metadata.get("token_count", 0)),
+            "char_count": int(metadata.get("char_count", 0)),
+            "start_word": int(metadata.get("start_word", 0)),
+            "end_word": int(metadata.get("end_word", 0)),
+            "section_title": str(metadata.get("section_title", "")),
+            "chunking_strategy": str(metadata.get("chunking_strategy", "")),
+            "parent_id": str(metadata.get("parent_id", "")),
+            "parent_text": str(metadata.get("parent_text", "")),
+            "image_refs": self._coerce_image_refs(metadata.get("image_refs", [])),
+            **{key: metadata[key] for key in STRUCTURE_FIELDS if key in metadata},
+        }
 
     def keyword_ranks(self, query: str) -> np.ndarray:
         """Return the 1-based BM25 rank of every stored chunk for ``query``.
@@ -226,8 +266,12 @@ class VectorStore:
         The keyword index is built from the chunk texts on first use.
         """
         if self._keyword_index is None or len(self._keyword_index) != len(self.metadata):
-            self._keyword_index = BM25Index([str(item["text"]) for item in self.metadata])
+            self._keyword_index = BM25Index([self._keyword_text(item) for item in self.metadata])
         return self._keyword_index.ranks(query)
+
+    def _keyword_text(self, item: Mapping[str, Any]) -> str:
+        header = str(item.get("context_header", "")) if self.keyword_context_header else ""
+        return f"{header}\n{item['text']}" if header else str(item["text"])
 
     @staticmethod
     def _coerce_image_refs(value: Any) -> list[SearchImageRef]:
@@ -307,11 +351,15 @@ class VectorStore:
         index.train(vectors)
         index.nprobe = max(1, min(self.ivf_nprobe, nlist))
         index.add(vectors)
+        # IVF needs a direct map to reconstruct stored vectors (search_positions).
+        index.make_direct_map()
         return index
 
     def _apply_search_parameters(self, index: faiss.Index) -> None:
         if hasattr(index, "nprobe"):
             index.nprobe = max(1, min(self.ivf_nprobe, getattr(index, "nlist", self.ivf_nprobe)))
+        if hasattr(index, "make_direct_map"):
+            index.make_direct_map()
 
     def exists(self) -> bool:
         """Return True when both the FAISS index and metadata are on disk."""

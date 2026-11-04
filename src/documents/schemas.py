@@ -66,6 +66,27 @@ class PageTableMetadata(TypedDict, total=False):
     column_count: int
 
 
+class DocumentSegment(TypedDict, total=False):
+    """One logical content unit of a page in the structured document model.
+
+    A page is split into body text, figures and tables. Each unit carries the
+    structure a query may refer to: its heading path, the box it belongs to,
+    the figure or table number and the data source printed under it.
+    """
+
+    element_type: str
+    text: str
+    heading_path: list[str]
+    box_id: str
+    box_title: str
+    figure_no: str
+    table_no: str
+    caption: str
+    data_source: str
+    image_indexes: list[int]
+    bbox: list[float]
+
+
 class PageMetadata(TypedDict, total=False):
     """Page-level metadata used by chunking and diagnostics."""
 
@@ -132,10 +153,13 @@ class DocumentPage:
     source_name: str
     images: list[DocumentImage] = field(default_factory=list)
     metadata: PageMetadata = field(default_factory=dict)
+    # None: page model, chunk the page text. A list (possibly empty): structured model,
+    # chunk only these segments; a page whose blocks were all dropped (contents) gives [].
+    segments: list[DocumentSegment] | None = None
 
     def to_chunk_input(self) -> "PageRecord":
         """Return the dict shape used by the chunking pipeline."""
-        return {
+        record: PageRecord = {
             "document_id": self.document_id,
             "text": self.chunk_text(),
             "page": self.page_number,
@@ -143,6 +167,9 @@ class DocumentPage:
             "metadata": self.metadata,
             "images": [image.to_record() for image in self.images],
         }
+        if self.segments is not None:
+            record["segments"] = self.segments
+        return record
 
     def chunk_text(self) -> str:
         """Return page text plus searchable image text."""
@@ -186,3 +213,4 @@ class PageRecord(TypedDict, total=False):
     document_id: str
     metadata: PageMetadata
     images: list[DocumentImageRecord]
+    segments: list[DocumentSegment]

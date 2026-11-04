@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import Any, Literal, Mapping, TypedDict
 
+from .metadata import structure_fields
+
 
 ChunkingStrategy = Literal[
     "fixed_word",
@@ -13,6 +15,8 @@ ChunkingStrategy = Literal[
     "parent_child",
     "sliding_window",
 ]
+# Structured-model elements kept whole when they fit in two chunks.
+WHOLE_ELEMENT_TYPES = {"figure", "table"}
 SUPPORTED_CHUNKING_STRATEGIES = {
     "fixed_word",
     "sentence",
@@ -56,6 +60,18 @@ class TextChunk(TypedDict, total=False):
     parent_id: str
     parent_text: str
     image_refs: list[ChunkImageRef]
+    # Structured document model only (see chunking/metadata.py).
+    element_type: str
+    heading_path: list[str]
+    box_id: str
+    box_title: str
+    figure_no: str
+    table_no: str
+    data_source: str
+    figure_refs: list[str]
+    time_periods: list[str]
+    value_types: list[str]
+    context_header: str
 
 
 @dataclass(frozen=True)
@@ -86,44 +102,35 @@ def split_documents(
     chunks: list[TextChunk] = []
     document_chunk_indexes: dict[str, int] = {}
     for page_document in documents:
-        text = str(page_document["text"]).strip()
-        if not text:
-            continue
-
-        if strategy == "parent_child":
-            pieces = _split_parent_child(
-                text=text,
-                child_size=chunk_size,
-                child_overlap=chunk_overlap,
-            )
-        else:
-            if strategy in {"fixed_word", "sliding_window"}:
-                text_chunks = _split_words(text.split(), chunk_size, chunk_overlap)
-            else:
-                units = _split_text_by_strategy(text, strategy, chunk_size)
-                if strategy == "semantic":
-                    text_chunks = _split_semantic_units(
-                        units=units,
-                        chunk_size=chunk_size,
-                        min_chunk_size=min_chunk_size,
-                    )
-                else:
-                    text_chunks = _pack_units(units, chunk_size, chunk_overlap, min_chunk_size)
-            pieces = [_ChunkPiece(text=chunk_text) for chunk_text in text_chunks]
-
-        page_words = text.split()
-        search_start_word = 0
         document_key = _document_counter_key(page_document)
-        for page_chunk_index, piece in enumerate(pieces):
-            child_text = piece.text
-            chunk_words = child_text.split()
-            document_chunk_index = document_chunk_indexes.get(document_key, 0)
-            start_word = _find_word_offset(page_words, chunk_words, search_start_word)
-            end_word = start_word + len(chunk_words)
-            search_start_word = max(start_word + 1, end_word - chunk_overlap)
-            chunks.append(
-                _build_chunk(
-                    document=page_document,
+        page_chunk_index = 0
+        for unit in _chunk_units(page_document):
+            text = str(unit["text"]).strip()
+            if not text:
+                continue
+
+            segment = unit.get("segment")
+            if (
+                segment is not None
+                and segment.get("element_type") in WHOLE_ELEMENT_TYPES
+                and len(text.split()) <= chunk_size * 2
+            ):
+                # A figure or table is one unit of meaning: caption, values and source stay together.
+                pieces = [_ChunkPiece(text=text)]
+            else:
+                pieces = _split_pieces(text, strategy, chunk_size, chunk_overlap, min_chunk_size)
+
+            unit_words = text.split()
+            search_start_word = 0
+            for piece in pieces:
+                child_text = piece.text
+                chunk_words = child_text.split()
+                document_chunk_index = document_chunk_indexes.get(document_key, 0)
+                start_word = _find_word_offset(unit_words, chunk_words, search_start_word)
+                end_word = start_word + len(chunk_words)
+                search_start_word = max(start_word + 1, end_word - chunk_overlap)
+                chunk = _build_chunk(
+                    document=unit,
                     text=child_text,
                     page_chunk_index=page_chunk_index,
                     document_chunk_index=document_chunk_index,
@@ -133,10 +140,73 @@ def split_documents(
                     parent_text=piece.parent_text,
                     parent_index=piece.parent_index,
                 )
-            )
-            document_chunk_indexes[document_key] = document_chunk_index + 1
+                if segment is not None:
+                    chunk.update(structure_fields(segment, child_text))
+                chunks.append(chunk)
+                document_chunk_indexes[document_key] = document_chunk_index + 1
+                page_chunk_index += 1
 
     return chunks
+
+
+def _chunk_units(page_document: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """Return the page itself, or one unit per segment in the structured model.
+
+    Segment units keep the page fields (page, source, document id) and only
+    the images of that segment, so a chunk links to its own chart.
+    """
+    segments = page_document.get("segments")
+    if segments is None:
+        return [page_document]
+
+    images = page_document.get("images", [])
+    metadata = page_document.get("metadata", {})
+    units: list[Mapping[str, Any]] = []
+    for segment in segments:
+        image_indexes = set(segment.get("image_indexes", []))
+        heading_path = [heading for heading in segment.get("heading_path", []) if heading]
+        units.append(
+            {
+                **page_document,
+                "text": segment.get("text", ""),
+                "segment": segment,
+                "images": [
+                    image
+                    for image in images
+                    if isinstance(image, Mapping) and image.get("image_index") in image_indexes
+                ],
+                "metadata": {
+                    **(metadata if isinstance(metadata, Mapping) else {}),
+                    # The section (second level) matches what the page model called section_title.
+                    "section_title": heading_path[1] if len(heading_path) > 1 else "".join(heading_path[:1]),
+                },
+            }
+        )
+    return units
+
+
+def _split_pieces(
+    text: str,
+    strategy: ChunkingStrategy,
+    chunk_size: int,
+    chunk_overlap: int,
+    min_chunk_size: int,
+) -> list[_ChunkPiece]:
+    if strategy == "parent_child":
+        return _split_parent_child(text=text, child_size=chunk_size, child_overlap=chunk_overlap)
+    if strategy in {"fixed_word", "sliding_window"}:
+        text_chunks = _split_words(text.split(), chunk_size, chunk_overlap)
+    else:
+        units = _split_text_by_strategy(text, strategy, chunk_size)
+        if strategy == "semantic":
+            text_chunks = _split_semantic_units(
+                units=units,
+                chunk_size=chunk_size,
+                min_chunk_size=min_chunk_size,
+            )
+        else:
+            text_chunks = _pack_units(units, chunk_size, chunk_overlap, min_chunk_size)
+    return [_ChunkPiece(text=chunk_text) for chunk_text in text_chunks]
 
 
 def _validate_chunking_args(

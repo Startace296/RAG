@@ -1,0 +1,17 @@
+A_page        dense  original page_hit=0.966 mrr=0.880 precision=0.368 keyword=0.957 context_chars=6502.759
+A_page        dense  metadata page_hit=0.731 mrr=0.638 precision=0.262 keyword=0.731 context_chars=6462.808
+A_page        hybrid original page_hit=1.000 mrr=0.943 precision=0.395 keyword=0.991 context_chars=6497.483
+A_page        hybrid metadata page_hit=0.885 mrr=0.633 precision=0.323 keyword=0.865 context_chars=6587.731
+B_structured  dense  original page_hit=1.000 mrr=0.865 precision=0.417 keyword=0.991 context_chars=5807.379
+B_structured  dense  metadata page_hit=0.885 mrr=0.749 precision=0.323 keyword=0.846 context_chars=5624.423
+B_structured  hybrid original page_hit=1.000 mrr=0.897 precision=0.452 keyword=0.991 context_chars=5972.207
+B_structured  hybrid metadata page_hit=0.885 mrr=0.779 precision=0.369 keyword=0.885 context_chars=5848.923
+C_header      dense  original page_hit=1.000 mrr=0.885 precision=0.417 keyword=0.991 context_chars=5926.966
+C_header      dense  metadata page_hit=0.846 mrr=0.753 precision=0.385 keyword=0.846 context_chars=5643.577
+C_header      hybrid original page_hit=1.000 mrr=0.925 precision=0.459 keyword=0.991 context_chars=6074.759
+C_header      hybrid metadata page_hit=0.885 mrr=0.817 precision=0.392 keyword=0.865 context_chars=5938.731
+D_filters     dense  original page_hit=1.000 mrr=0.902 precision=0.445 keyword=0.991 context_chars=5941.828
+D_filters     dense  metadata page_hit=0.962 mrr=0.917 precision=0.696 keyword=0.962 context_chars=4244.500
+D_filters     hybrid original page_hit=1.000 mrr=0.925 precision=0.466 keyword=0.991 context_chars=5994.310
+D_filters     hybrid metadata page_hit=1.000 mrr=0.933 precision=0.688 keyword=1.000 context_chars=4333.115
+Report: E:\All in\RAG\rag\evaluation\results\document_model_eval.json

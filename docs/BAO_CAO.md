@@ -4,7 +4,7 @@
 
 ## CHƯƠNG 3. MÔ HÌNH DỮ LIỆU VÀ XỬ LÝ TÀI LIỆU ĐẦU VÀO
 
-Trong hệ thống RAG, chất lượng câu trả lời phụ thuộc trước hết vào khâu chuẩn bị dữ liệu. Mô hình ngôn ngữ chỉ trả lời đúng khi nhận được đúng đoạn văn bản liên quan. Muốn tìm được đoạn đó, tài liệu gốc phải được đọc chính xác, biểu diễn có cấu trúc và chia thành những phần nhỏ hợp lý. Chương này trình bày cách hệ thống biểu diễn tài liệu, cách tổ chức các chunk, cách chuyển đổi tài liệu đầu vào và cách xử lý tài liệu có hình ảnh.
+Trong hệ thống RAG, chất lượng câu trả lời phụ thuộc trước hết vào khâu chuẩn bị dữ liệu. Mô hình ngôn ngữ chỉ trả lời đúng khi nhận được đúng đoạn văn bản liên quan. Muốn tìm được đoạn đó, tài liệu gốc phải được đọc chính xác, biểu diễn có cấu trúc và chia thành những phần nhỏ hợp lý. Chương này trình bày cách hệ thống biểu diễn tài liệu, cách tổ chức các chunk, cách chuyển đổi tài liệu đầu vào và cách xử lý tài liệu có hình ảnh. Mục 3.5 phân tích dữ liệu cụ thể và nhu cầu truy vấn trên dữ liệu đó, từ đó quyết định document model cần lưu những thông tin gì, và kiểm chứng bằng thực nghiệm.
 
 Toàn bộ quá trình xử lý dữ liệu gồm các giai đoạn nối tiếp nhau:
 
@@ -12,7 +12,7 @@ Toàn bộ quá trình xử lý dữ liệu gồm các giai đoạn nối tiếp
   File PDF
      │
      ▼
-  Đọc và trích xuất ──────► Document (Tài liệu → Trang → Hình ảnh)
+  Đọc và trích xuất ──────► Document (Tài liệu → Trang → Segment, Hình ảnh)
      │
      ▼
   Làm sạch, nhận diện cấu trúc
@@ -92,7 +92,7 @@ Mỗi trang có hai loại phần tử nội dung:
 - **Văn bản (`text`)**: toàn bộ văn bản của trang sau khi làm sạch. Các đoạn văn được ngăn cách bằng một dòng trống. Đây là quy ước chung giữa bộ đọc và bộ chia chunk: dòng trống nghĩa là ranh giới đoạn.
 - **Hình ảnh (`images`)**: danh sách các đối tượng `DocumentImage`. Lớp này không chứa dữ liệu ảnh mà chỉ lưu đường dẫn tới file ảnh, cùng phần văn bản khai thác được từ ảnh. Thiết kế này tách **dữ liệu ảnh** (file trên đĩa) khỏi **thông tin về ảnh**, nên metadata luôn gọn và dễ lưu dưới dạng JSON.
 
-Ngoài ra, trang còn ghi lại danh sách **khối bố cục** (khối văn bản và khối hình ảnh kèm tọa độ) và danh sách **bảng** được phát hiện (tọa độ, số hàng, số cột). Hai danh sách này là thông tin mô tả; chúng chưa được dùng để tách nội dung thành phần tử riêng.
+Ngoài ra, trang còn ghi lại danh sách **khối bố cục** (khối văn bản và khối hình ảnh kèm tọa độ) và danh sách **bảng** được phát hiện (tọa độ, số hàng, số cột). Ở document model theo trang, hai danh sách này chỉ là thông tin mô tả. Document model structured (mục 3.5) dùng bố cục trang để tách nội dung thành các phần tử riêng: đoạn văn, hình, bảng và thông tin tài liệu.
 
 Trước khi chia chunk, mỗi trang được chuyển thành một bản ghi đơn giản (`PageRecord`) qua phương thức `to_chunk_input()`. Bản ghi gồm văn bản, số trang, tên nguồn, mã tài liệu, metadata và danh sách ảnh. Văn bản trong bản ghi là văn bản của trang **cộng thêm** văn bản khai thác từ ảnh. Bộ chia chunk chỉ làm việc với bản ghi này và không cần biết tài liệu gốc là PDF hay định dạng nào khác.
 
@@ -114,6 +114,7 @@ Chunk là đơn vị tìm kiếm của hệ thống. Mỗi chunk được biểu
 | Hình ảnh | `image_refs` | Tham chiếu tới các ảnh trên cùng trang |
 | Kích thước | `word_count`, `char_count`, `token_count` | Kiểm tra độ dài chunk |
 | Truy vết | `chunking_strategy` | Chiến lược đã tạo ra chunk |
+| Cấu trúc (model structured) | `element_type`, `heading_path`, `box_id`, `figure_no`, `table_no`, `data_source`, `figure_refs`, `time_periods`, `value_types`, `context_header` | Phục vụ câu hỏi theo hộp, hình, bảng, nguồn, thời điểm, dự báo (mục 3.5) |
 
 Mã chunk được tạo bằng cách băm tổ hợp gồm mã tài liệu, tên nguồn, số trang, thứ tự chunk trong trang và 120 ký tự đầu của nội dung. Mã này có tính **tất định**: xử lý lại cùng một tài liệu với cùng cấu hình sẽ cho ra đúng những mã cũ.
 
@@ -141,7 +142,7 @@ Hệ thống hỗ trợ hai loại liên kết giữa các chunk.
 
 **Liên kết cha – con.** Khi dùng chiến lược parent–child, văn bản trang trước hết được chia thành các chunk cha lớn, sau đó mỗi chunk cha được chia thành các chunk con nhỏ hơn. Mỗi chunk con lưu `parent_id` (mã của chunk cha) và `parent_text` (văn bản đầy đủ của chunk cha). Mọi chunk con thuộc cùng một cha có chung `parent_id`. Chunk con được dùng để tìm kiếm; khi tìm được, hệ thống đưa văn bản của chunk cha cho mô hình ngôn ngữ để có ngữ cảnh rộng hơn (chi tiết ở Chương 4).
 
-Ngoài ra còn có **liên kết chéo tới hình ảnh**: mọi chunk của một trang đều mang danh sách `image_refs` trỏ tới các ảnh trên trang đó.
+Ngoài ra còn có **liên kết chéo tới hình ảnh**. Ở model theo trang, mọi chunk của một trang đều mang danh sách `image_refs` trỏ tới tất cả ảnh trên trang đó. Ở model structured, chỉ chunk của một hình mới mang ảnh, và đó đúng là ảnh biểu đồ của hình ấy. Đoạn văn liên kết với hình qua trường `figure_refs`.
 
 ### 3.3. Chuyển đổi tài liệu đầu vào
 
@@ -247,17 +248,203 @@ Metadata của ảnh có sẵn trường `caption` dành cho mô tả ảnh. Tr�
 
 #### 3.4.2. Xử lý bảng biểu
 
-Hệ thống phát hiện bảng trên mỗi trang bằng chức năng `find_tables()` của PyMuPDF và ghi vào metadata trang vị trí, số hàng và số cột của từng bảng. Nội dung các ô bảng vẫn đi vào chunk thông qua văn bản của trang, nhưng theo dạng văn bản thường, không giữ quan hệ hàng – cột.
+Hệ thống phát hiện bảng trên mỗi trang bằng chức năng `find_tables()` của PyMuPDF và ghi vào metadata trang vị trí, số hàng và số cột của từng bảng. Ở model theo trang, nội dung các ô bảng đi vào chunk thông qua văn bản của trang, dưới dạng văn bản thường, không giữ quan hệ hàng – cột. Model structured (mục 3.5) tách mỗi bảng thành một chunk riêng. Chunk này gồm tiêu đề bảng, các dòng được ghép lại theo tọa độ (giữ hàng tiêu đề cột, ví dụ `2024 2025e 2026f 2027f 2028f`) và dòng nguồn.
 
-### 3.5. Nhận xét và lựa chọn
+### 3.5. Thiết kế Document Model theo nhu cầu truy vấn
 
-Mô hình dữ liệu được chọn là **cây ba tầng Tài liệu → Trang → Hình ảnh**, với các nguyên tắc: định danh theo nội dung, mỗi phần tử tự mang thông tin nguồn gốc, dữ liệu bất biến sau khi tạo, và tách biệt giữa bộ đọc tài liệu với bộ chia chunk. Mô hình này đáp ứng yêu cầu cốt lõi của RAG là mọi câu trả lời phải truy ngược được về đúng tài liệu, đúng trang.
+Document model ở các mục 3.1–3.4 được thiết kế theo **cấu trúc của file PDF**: tài liệu gồm trang, trang gồm văn bản và ảnh. Tuy nhiên, việc lưu thông tin gì vào RAG nên được quyết định từ phía ngược lại: **khi truy vấn, người dùng hỏi gì và câu trả lời cần kèm thông tin gì**. Mục này mô tả cụ thể dữ liệu lưu trữ, phân tích nhu cầu truy vấn trên dữ liệu đó, thiết kế document model tương ứng (gọi là *model structured* để phân biệt với *model theo trang*) và đo hiệu quả bằng thực nghiệm.
 
-Trang được chọn làm đơn vị xử lý trung tâm vì nó vừa là đơn vị tự nhiên của PDF, vừa là đơn vị trích dẫn quen thuộc với người đọc. Đổi lại, đoạn văn kéo dài qua hai trang sẽ bị tách đôi.
+#### 3.5.1. Dữ liệu lưu trữ
+
+Dữ liệu là **KinhteVN.pdf**: báo cáo *Cập nhật Tình hình Kinh tế Việt Nam, tháng 5/2026* của Ngân hàng Thế giới, dài 33 trang. Đây không phải văn bản thuần mà là một **báo cáo phân tích kinh tế** có cấu trúc rõ ràng:
+
+| Thành phần | Số lượng | Đặc điểm |
+| --- | --- | --- |
+| Chương (A, B, C) và mục | 3 chương, 9 mục, cùng phần Tóm lược | Cỡ chữ 44pt (chương) và 16pt (mục) |
+| Câu tiêu đề in đậm nghiêng | 23 câu | Mỗi đoạn mở đầu bằng một câu tóm tắt ý, cỡ 11–14pt |
+| Hình (biểu đồ) | 54 (Hình 1–52, B1.1, B2.1) | Mỗi hình gồm nhãn "HÌNH n", tiêu đề, dòng "Nguồn: …" và ảnh biểu đồ |
+| Bảng | 3 (Bảng 1–3) | Bảng 3 là bảng dự báo 2024–2028 (cột `2025e` là ước tính, `2026f`–`2028f` là dự báo) |
+| Hộp chuyên đề | 3 (Hộp 1–3) | Nội dung chuyên sâu, tách khỏi mạch chính. Hộp 3 chỉ chiếm nửa dưới trang 30 |
+| Trang đầu | Bìa, bản quyền, lời cảm ơn, mục lục, lời nói đầu | Mục lục lặp lại tên của mọi hình và mục |
+
+Số liệu trong báo cáo luôn gắn với **thời điểm** (năm 2025, quý I/2026, tháng 4/2026), **tính chất** (thực tế, ước tính hoặc dự báo) và **nguồn** (NSO, SBV, Haver Analytics, Fiingroup…).
+
+#### 3.5.2. Nhu cầu truy vấn
+
+Bên cạnh 29 câu hỏi đánh giá đã có, các kiểu câu hỏi thường gặp khi đọc báo cáo này được liệt kê dưới đây. Với mỗi kiểu, bảng xác định hệ thống cần biết gì để **tìm đúng** và **trả lời đúng**:
+
+| Kiểu câu hỏi | Ví dụ | Cần có khi truy vấn | Model theo trang |
+| --- | --- | --- | --- |
+| Theo hình | "Hình 16 thể hiện gì?" | Số hình, tiêu đề hình, đoạn văn bình luận hình, ảnh của đúng hình đó | Không có số hình. Mỗi chunk gắn với **tất cả** ảnh của trang (trung bình 2,6 ảnh) |
+| Nguồn số liệu | "Số liệu PMI lấy từ nguồn nào?" | Nguồn gắn với đúng biểu đồ hoặc bảng | Dòng "Nguồn:" bị trộn vào đoạn văn (48/107 chunk) |
+| Theo hộp | "Theo Hộp 3, …" | Chunk thuộc hộp nào, tên hộp | Không có. Trang 19 (Hộp 1) bị gán vào mục "Sản xuất và tâm lý doanh nghiệp" |
+| Theo bảng | "Theo Bảng 3, GDP 2026 dự báo bao nhiêu?" | Số bảng, giữ hàng tiêu đề cột đi cùng các dòng số liệu | Bảng bị đọc như văn bản thường |
+| Dự báo | "Lạm phát 2026 dự báo bao nhiêu?" | Phân biệt số dự báo, ước tính và thực tế | Không có |
+| Theo thời điểm | "Lạm phát tháng 4/2026?" | Các mốc thời gian chunk nhắc tới | Không có |
+| Theo chủ đề | "Phần Tài chính công nói gì về thu thuế?" | Đường dẫn tiêu đề chương → mục | Chỉ có 1 cấp tiêu đề |
+| Về chính tài liệu | "Báo cáo có tiêu đề phụ là gì?" | Tên, tiêu đề phụ, thời gian phát hành | Chỉ có nếu chữ trên bìa tình cờ được cắt vào chunk |
+
+Phân tích này cũng chỉ ra **những gì không nên lưu**:
+
+- **Mục lục**: không ai hỏi về mục lục, nhưng nó lặp lại tên mọi hình. Khi hỏi "Hình 16", model theo trang trả về trang mục lục ở hạng 1 và 2.
+- **Header, footer, dấu chìm** ("Public Disclosure Authorized").
+- **Câu tiêu đề cấp 3** không được lặp lại trong dòng ngữ cảnh của chunk. Câu này đã có ở đầu đoạn văn, nếu lặp lại trên mọi chunk sẽ làm loãng vector (mục 3.5.6).
+
+#### 3.5.3. Document model structured
+
+Mỗi trang được chia thành các **segment**, tức các đơn vị nội dung có nghĩa (kiểu `DocumentSegment` trong `src/documents/schemas.py`). Chunk được cắt từ từng segment, không cắt từ cả trang:
+
+```text
+Document  (thêm: tên báo cáo, tiêu đề phụ, thời gian phát hành, lấy từ trang bìa)
+ └── DocumentPage
+      └── DocumentSegment
+           ├── document_info : thẻ thông tin tài liệu
+           ├── body          : đoạn văn cùng tiêu đề, cùng hộp
+           ├── figure        : Hình n = tiêu đề + nguồn + câu bình luận hình + ảnh của hình
+           └── table         : Bảng n = tiêu đề + các dòng (giữ hàng tiêu đề cột) + nguồn
+                └── TextChunk (đoạn văn dài được cắt tiếp bằng recursive; hình và bảng giữ nguyên)
+```
+
+Nhờ cách tách này, đoạn văn không còn lẫn chú thích biểu đồ, còn mỗi hình hoặc bảng là một chunk trọn vẹn. Trên KinhteVN.pdf, model structured tạo 146 chunk: 88 đoạn văn, 54 hình, 3 bảng và 1 thẻ thông tin tài liệu. Model theo trang tạo 107 chunk.
+
+Các trường bổ sung vào chunk (`src/chunking/metadata.py`), mỗi trường ứng với một kiểu câu hỏi ở mục 3.5.2:
+
+| Trường | Ví dụ | Phục vụ câu hỏi |
+| --- | --- | --- |
+| `element_type` | `figure` | Phân biệt đoạn văn, hình, bảng, thông tin tài liệu |
+| `heading_path` | `B. Diễn biến kinh tế gần đây > Sản xuất và tâm lý doanh nghiệp > …` | Theo chủ đề, trích dẫn vị trí |
+| `box_id`, `box_title` | `3`, "Cú sốc dầu mỏ Trung Đông: …" | "Theo Hộp 3…" |
+| `figure_no`, `table_no` | `16`, `3` | "Hình 16…", "Bảng 3…" |
+| `figure_refs` | `["16", "17"]` | Đoạn văn có nhắc tới hình. Dùng để nối văn bản với biểu đồ |
+| `data_source` | `Haver Analytics` | "Số liệu lấy từ nguồn nào?" |
+| `time_periods` | `["2025", "2026-04", "2026-Q1", "M03"]` | "tháng 4/2026", "quý I/2026" |
+| `value_types` | `["forecast", "estimate"]` | Phân biệt dự báo với ước tính |
+| `context_header` | `Mục: B. … > Sản xuất và tâm lý doanh nghiệp \| Hình 16` | Đưa vào embedding và BM25, hiển thị cho LLM |
+| `image_refs` | Chỉ ảnh của chính hình đó | Hiển thị đúng biểu đồ bên cạnh câu trả lời |
+
+Ví dụ chunk của Hình 16 (trang 16):
+
+```text
+Hình 16: Chỉ số nhà quản trị mua hàng (PMIs), (Điều chỉnh theo mùa vụ, +50 = mở rộng)
+Nguồn: Haver Analytics.
+Nội dung liên quan: Mặc dù vậy, các khảo sát PMI trong tháng 4 cho thấy hoạt động sản xuất
+chế biến, chế tạo đã chậm lại tháng thứ hai liên tiếp, … (Hình 16).
+
+element_type=figure | figure_no=16 | data_source=Haver Analytics | time_periods=[M04]
+image_refs=[page_0016_image_0000_xref_102.jpeg]
+```
+
+Phần "Nội dung liên quan" là câu trong thân bài có trích dẫn hình. Chỉ riêng tiêu đề "Chỉ số PMI" không cho biết biểu đồ nói lên điều gì; câu bình luận mới nói điều đó.
+
+#### 3.5.4. Trích xuất cấu trúc từ PDF
+
+Vì PDF không lưu cấu trúc, cấu trúc được dựng lại từ font chữ và vị trí (`src/documents/structure.py`):
+
+- **Tiêu đề 3 cấp**: chương ≥ 30pt, mục ≥ 15,5pt, câu tiêu đề in đậm nghiêng ≥ 10,9pt. Trang chỉ gồm tiêu đề (trang bìa) không mở mục mới.
+- **Hình**: dòng "HÌNH n" là nhãn. Tiêu đề hình (font OpenSans) và dòng "Nguồn:" (≤ 8,5pt) được gán cho nhãn gần nhất phía trên, cùng cột. Ảnh biểu đồ được gán theo tọa độ của nó trên trang.
+- **Bảng**: gồm mọi khối nằm giữa dòng "Bảng n." (in đậm) và dòng "Nguồn:" đầu tiên phía dưới. Bảng 2 dùng cùng font với thân bài, nên chỉ nhận ra được theo vị trí. Các ô được ghép thành dòng theo tọa độ y.
+- **Hộp**: dòng "HỘP n" mở hộp, và hộp kéo dài tới cuối trang. Ranh giới tính theo tọa độ.
+- **Thứ tự đọc**: đọc cột trái rồi cột phải, nhưng chỉ khi hai cột thật sự nằm cạnh nhau.
+- **Thông tin tài liệu**: lấy từ trang bìa. Tên báo cáo là dòng chữ lớn nhất, tiêu đề phụ là dòng in đậm nghiêng, thời gian là dòng có dạng "Tháng m/yyyy".
+- **Mục lục và dấu chìm** bị loại bỏ.
+- **Thời điểm, dự báo, trích dẫn hình**: lấy bằng biểu thức chính quy trên văn bản của chunk.
+
+Model được chọn bằng biến `DOCUMENT_MODEL=page|structured`.
+
+#### 3.5.5. Sử dụng metadata khi truy vấn
+
+Metadata chỉ có ích khi được dùng lúc truy vấn. Câu hỏi được phân tích bằng cùng bộ quy tắc như khi tạo chunk (`src/retrieval/query_metadata.py`):
+
+| Tín hiệu trong câu hỏi | Cách dùng | Lý do |
+| --- | --- | --- |
+| "Hộp n", "Hình n", "Bảng n" | **Lọc cứng**: chỉ xét chunk thuộc hộp, hình, bảng đó (hoặc đoạn văn trích dẫn hình đó), rồi xếp hạng bằng vector | Người dùng đã chỉ rõ vị trí. Embedding không phân biệt được "Hình 16" với "Hình 18" |
+| Thời điểm, "dự báo", "nguồn" | **Xếp hạng mềm**: thêm một hạng thứ ba vào RRF (bên cạnh dense và BM25) | Chỉ là gợi ý: tăng thứ hạng chunk phù hợp, không loại bỏ chunk nào |
+| (mọi câu hỏi) | `context_header` được ghép vào chunk khi tạo embedding và chỉ mục BM25 (`CONTEXT_HEADER=true`) | Chunk "biết" mình thuộc chương và mục nào |
+| (mọi câu hỏi) | Nhãn ngữ cảnh gửi cho LLM: `[KinhteVN.pdf, trang 16 \| Mục: … \| Hình 16 \| Nguồn số liệu: Haver Analytics]` | LLM trích dẫn được vị trí và nguồn |
+
+Lọc cứng và xếp hạng mềm được bật bằng `METADATA_FILTERS=true`.
+
+#### 3.5.6. Thực nghiệm
+
+**Thiết lập.**
+
+- **Bốn cấu hình**, mỗi cấu hình thêm một quyết định thiết kế:
+  - A: model theo trang
+  - B: model structured (chỉ tách segment)
+  - C: B + `context_header`
+  - D: C + dùng metadata khi truy vấn
+- **Hai bộ câu hỏi**:
+  - 29 câu hiện có
+  - 26 câu mới cần metadata (Phụ lục C), gồm 6 câu về hình, 4 câu về nguồn, 4 câu về hộp, 3 câu về bảng, 3 câu về dự báo, 4 câu về thời điểm, 2 câu về mục. Từ khóa đáp án đã được kiểm tra tự động là có mặt trên trang đáp án.
+- **Cấu hình chung**: e5-small, recursive 300/50, top-5. Không dùng reranker và không gọi LLM, để kết quả chỉ phản ánh tác động của document model.
+- **Chỉ số**:
+  - *page_hit*: có ít nhất 1 chunk thuộc trang đáp án
+  - *MRR*: thứ hạng của chunk đúng đầu tiên
+  - *precision*: tỷ lệ chunk thuộc trang đáp án trong 5 chunk ngữ cảnh, tức mức độ ít nhiễu
+  - *keyword*: tỷ lệ từ khóa đáp án có mặt trong ngữ cảnh gửi cho LLM, tính cả nhãn
+  - *độ dài ngữ cảnh*
+
+**Kết quả (hybrid).**
+
+| Cấu hình | Số chunk | Bộ câu hỏi | page_hit | MRR | precision | keyword | Ký tự ngữ cảnh |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| A. Theo trang | 107 | 29 câu hiện có | 1,000 | **0,943** | 0,395 | 0,991 | 6 497 |
+| B. Structured | 146 | 29 câu hiện có | 1,000 | 0,897 | 0,452 | 0,991 | 5 972 |
+| C. + context header | 146 | 29 câu hiện có | 1,000 | 0,925 | 0,459 | 0,991 | 6 075 |
+| D. + lọc metadata | 146 | 29 câu hiện có | 1,000 | 0,925 | **0,466** | 0,991 | 5 994 |
+| A. Theo trang | 107 | 26 câu metadata | 0,885 | 0,633 | 0,323 | 0,865 | 6 588 |
+| B. Structured | 146 | 26 câu metadata | 0,885 | 0,779 | 0,369 | 0,885 | 5 849 |
+| C. + context header | 146 | 26 câu metadata | 0,885 | 0,817 | 0,392 | 0,865 | 5 939 |
+| D. + lọc metadata | 146 | 26 câu metadata | **1,000** | **0,933** | **0,688** | **1,000** | **4 333** |
+
+Theo từng kiểu câu hỏi (bộ metadata, hybrid, ghi theo dạng MRR / precision):
+
+| Kiểu | A. Theo trang | B | C | D |
+| --- | --- | --- | --- | --- |
+| Hình | 0,22 / 0,20 | 0,50 / 0,17 | 0,50 / 0,13 | **1,00 / 0,92** |
+| Hộp | 0,71 / 0,45 | 0,75 / 0,45 | 1,00 / 0,55 | **1,00 / 1,00** |
+| Bảng | 0,83 / 0,33 | 0,83 / 0,40 | 1,00 / 0,33 | **1,00 / 1,00** |
+| Nguồn | 0,88 / 0,30 | 1,00 / 0,50 | 1,00 / 0,50 | 1,00 / 0,45 |
+| Thời điểm | 0,81 / 0,35 | 1,00 / 0,40 | 1,00 / 0,50 | 1,00 / 0,40 |
+| Dự báo | 0,34 / 0,20 | 0,58 / 0,20 | 0,42 / 0,20 | 0,42 / 0,20 |
+| Mục | 1,00 / 0,60 | 1,00 / 0,70 | 1,00 / 0,80 | 1,00 / 0,70 |
+
+Ví dụ với câu hỏi *"Hình 16 trong báo cáo thể hiện chỉ số gì và số liệu lấy từ nguồn nào?"*:
+
+- **Model theo trang**: lấy về 5 chunk ở các trang 4, 7 (mục lục), 16, 5, 7. Chunk đúng chỉ đứng hạng 3, và lẫn với chú thích của 3 biểu đồ khác.
+- **Cấu hình D**: lấy về 2 chunk, đều ở trang 16. Chunk thứ nhất là chính Hình 16 (tiêu đề, nguồn Haver Analytics, câu bình luận, ảnh). Chunk thứ hai là đoạn văn trích dẫn Hình 16.
+
+Kết quả chi tiết, gồm cả chế độ dense, nằm ở Phụ lục D.7.
+
+**Phân tích.**
+
+1. **Tách segment (B)** làm ngữ cảnh sạch hơn: precision tăng, ngữ cảnh ngắn đi 8–11%. Câu hỏi về thời điểm và nguồn được cải thiện (MRR 0,81 → 1,00 và 0,88 → 1,00), vì đoạn văn không còn lẫn chú thích của các biểu đồ trên cùng trang. Tuy nhiên MRR trên bộ câu hỏi hiện có giảm (0,943 → 0,897), vì một số chunk ngắn hơn và mất ngữ cảnh xung quanh.
+2. **Context header (C)** bù lại một phần: MRR bộ hiện có 0,897 → 0,925, các câu về hộp và bảng tăng lên 1,00. Phiên bản đầu tiên đưa cả câu tiêu đề cấp 3 vào header lại làm **giảm** kết quả, vì câu này dài và lặp lại trên mọi chunk. Vì vậy header chỉ giữ chương và mục.
+3. **Lọc metadata (D)** mang lại hiệu quả lớn nhất với câu hỏi về hình, hộp, bảng: MRR = 1,00, precision từ 0,92 đến 1,00. Đây là loại câu hỏi embedding không giải được: B và C vẫn trả về trang mục lục cho câu "Hình 16", vì với mô hình embedding, "Hình 16" và "Hình 18" gần như giống nhau.
+4. **Thông tin tài liệu** cần một chunk riêng. Khi chưa có chunk này, câu "tiêu đề phụ là gì?" bị trả lời sai, vì chữ trên bìa đều cỡ lớn nên bị hiểu nhầm là tiêu đề chương.
+
+#### 3.5.7. Hạn chế
+
+- **Câu hỏi dự báo chưa được giải quyết** (MRR 0,42). Chữ "dự báo/dự kiến" xuất hiện ở 20 chunk, nên tín hiệu này quá yếu. Bảng 3 có mặt trong top-5 ở cả 3 câu nhưng chỉ đứng hạng 2–4. Hướng cải thiện: ưu tiên chunk loại `table` khi câu hỏi hỏi số dự báo của một năm cụ thể.
+- **Quy tắc nhận diện dựa trên font của tài liệu này**. Với tài liệu khác cần điều chỉnh ngưỡng, hoặc dùng công cụ phân tích bố cục.
+- **Hình 47 không tìm được dòng nguồn**. Đường dẫn tiêu đề của hình nằm ở đầu trang mới đôi khi lấy theo mục của trang trước.
+- **Bộ 26 câu hỏi được soạn sau khi đã biết cấu trúc tài liệu**, nên có thể thiên lệch về phía model structured. Số câu ở mỗi kiểu còn ít (2–6 câu).
+- **Chưa đo chất lượng câu trả lời của LLM và chưa bật reranker** với model structured.
+
+### 3.6. Nhận xét và lựa chọn
+
+Mô hình dữ liệu nền là **cây phân cấp Tài liệu → Trang → Hình ảnh**, với các nguyên tắc: định danh theo nội dung, mỗi phần tử tự mang thông tin nguồn gốc, dữ liệu bất biến sau khi tạo, và tách biệt giữa bộ đọc tài liệu với bộ chia chunk. Mô hình này đáp ứng yêu cầu cốt lõi của RAG là mọi câu trả lời phải truy ngược được về đúng tài liệu, đúng trang.
 
 Với PDF, bộ chuyển đổi không chỉ lấy chữ mà còn dựng lại cấu trúc: đoạn văn từ khối, câu hoàn chỉnh từ việc nối dòng, nội dung sạch từ việc loại header theo tần suất, tiêu đề mục từ thống kê cỡ chữ.
 
-Với hình ảnh, hệ thống đã phát hiện, lọc, lưu trữ và liên kết ảnh với văn bản, đồng thời có sẵn cơ chế đưa văn bản từ ảnh vào quy trình tìm kiếm. Trong cấu hình hiện tại, OCR đang tắt và chưa có thành phần sinh mô tả ảnh. Vì vậy nội dung của biểu đồ và hình minh họa chưa tham gia vào việc tìm kiếm; chỉ phần văn bản bao quanh ảnh (tên hình, chú thích nguồn, đoạn văn có nhắc tới hình) được tìm kiếm.
+Việc lưu thông tin gì được quyết định theo **nhu cầu truy vấn** trên dữ liệu cụ thể (mục 3.5). Với báo cáo kinh tế như KinhteVN.pdf, người dùng hỏi theo hình, hộp, bảng, nguồn, thời điểm và dự báo. Vì vậy hệ thống chọn **model structured**, gồm các phần tử đoạn văn, hình, bảng và thông tin tài liệu, kèm metadata tương ứng, và dùng metadata đó khi truy vấn (cấu hình D). So với model theo trang:
+
+- Trên bộ câu hỏi cần metadata, MRR tăng từ 0,633 lên 0,933, precision từ 0,323 lên 0,688, và ngữ cảnh ngắn hơn 34%.
+- Trên bộ câu hỏi hiện có, page_hit và keyword giữ nguyên, MRR giảm nhẹ từ 0,943 xuống 0,925.
+
+Trang vẫn là đơn vị trích dẫn, nên chunk không vượt qua ranh giới trang. Đổi lại, đoạn văn kéo dài qua hai trang sẽ bị tách đôi.
+
+Với hình ảnh, model structured gắn mỗi ảnh biểu đồ với đúng hình của nó, cùng tiêu đề, nguồn và câu bình luận. Nhờ vậy phần văn bản mô tả biểu đồ được tìm kiếm như một đơn vị riêng. Nội dung bên trong ảnh (các con số trên biểu đồ) vẫn chưa được đọc, vì OCR đang tắt và chưa có mô hình sinh mô tả ảnh.
 
 ---
 
@@ -835,6 +1022,7 @@ Không có trường hợp nào lỗi do retrieval bỏ sót trang đáp án. Nh
 | Thành phần | Các phương án đã thử | Lựa chọn | Lý do chính |
 | --- | --- | --- | --- |
 | Xử lý tài liệu | Trích văn bản thô; trích theo khối, loại header, nhận diện tiêu đề | Trích theo khối, loại header, nhận diện tiêu đề | Giữ ranh giới đoạn văn cho chunking; loại nhiễu cho BM25 |
+| Document model | Theo trang; structured (đoạn văn, hình, bảng, hộp, nguồn, thời điểm); + context header; + lọc metadata khi truy vấn | Structured + context header + lọc metadata | Câu hỏi cần metadata: MRR 0,633 → 0,933, precision 0,323 → 0,688; bộ câu hỏi hiện có giữ page_hit 1,000 |
 | Chunking | Fixed-size, sliding window, sentence, paragraph, recursive, semantic, parent–child; kích thước 150/300/500 | Recursive, 300 từ, gối đầu 50 | Recall@5 0,966, MRR 0,858, cao nhất |
 | Embedding | MiniLM, mpnet, e5-small, e5-base | e5-small | Chính xác tương đương e5-base, nhanh gấp 2–3 lần |
 | Vector store | FAISS Flat, HNSW, IVF | FAISS Flat | Chính xác tuyệt đối, nhanh nhất ở quy mô nhỏ |
@@ -849,6 +1037,9 @@ Không có trường hợp nào lỗi do retrieval bỏ sót trang đáp án. Nh
 DOCUMENT_STRIP_BOILERPLATE=true
 DOCUMENT_IMAGE_EXPORT=true
 IMAGE_MIN_SIDE=32
+DOCUMENT_MODEL=structured
+CONTEXT_HEADER=true
+METADATA_FILTERS=true
 
 # Chunking
 CHUNKING_STRATEGY=recursive
@@ -913,6 +1104,7 @@ Tổng cộng, pipeline tối ưu tăng Recall@5 thêm khoảng 33 điểm và M
 
 - **Mô hình dữ liệu** phân cấp Tài liệu → Trang → Hình ảnh, định danh theo nội dung, bảo đảm mọi câu trả lời truy ngược được về đúng tài liệu và đúng trang.
 - **Bộ đọc PDF** dựng lại cấu trúc ngữ nghĩa từ thông tin trình bày: đoạn văn, câu hoàn chỉnh, nội dung đã loại header, tiêu đề mục. Hình ảnh được phát hiện, lọc, lưu trữ và liên kết với văn bản; OCR được tích hợp dưới dạng tùy chọn.
+- **Document model thiết kế theo nhu cầu truy vấn**: từ phân tích các kiểu câu hỏi trên dữ liệu, hệ thống lưu các phần tử đoạn văn, hình, bảng, hộp và thông tin tài liệu, kèm metadata về tiêu đề nhiều cấp, nguồn, thời điểm và dự báo. Metadata này được dùng để lọc và xếp hạng khi truy vấn. Trên 26 câu hỏi cần metadata, MRR tăng từ 0,633 lên 0,933.
 - **Bảy chiến lược chunking** được cài đặt và so sánh bằng thực nghiệm; chiến lược recursive được chọn.
 - **Khảo sát bốn mô hình embedding** và **ba thuật toán đánh chỉ mục**, với các lựa chọn dựa trên số liệu thực nghiệm.
 - **Tìm kiếm kết hợp** dense và BM25 bằng RRF, đạt tỷ lệ trúng trang tuyệt đối trên bộ câu hỏi đánh giá.
@@ -923,10 +1115,10 @@ Tổng cộng, pipeline tối ưu tăng Recall@5 thêm khoảng 33 điểm và M
 ### 11.2. Hạn chế
 
 - **Chỉ hỗ trợ định dạng PDF** có lớp văn bản.
-- **Hình ảnh chưa tham gia vào tìm kiếm** trong cấu hình hiện tại: OCR đang tắt và chưa có thành phần sinh mô tả ảnh. Biểu đồ vẽ bằng lệnh đồ họa không được phát hiện như hình ảnh. Tham chiếu ảnh được gắn theo trang, chưa theo đoạn văn.
-- **Bảng chỉ được phát hiện**, nội dung chưa giữ cấu trúc hàng – cột.
+- **Nội dung bên trong ảnh chưa tham gia vào tìm kiếm**: OCR đang tắt và chưa có thành phần sinh mô tả ảnh. Model structured mới chỉ gắn ảnh với tiêu đề, nguồn và câu bình luận của hình. Biểu đồ vẽ bằng lệnh đồ họa không được phát hiện như hình ảnh.
+- **Bảng được ghép lại thành dòng theo tọa độ**. Hàng tiêu đề cột được giữ, nhưng tiêu đề cột trải trên nhiều dòng (Bảng 1) vẫn bị tách rời.
+- **Quy tắc nhận diện cấu trúc dựa trên font và bố cục của KinhteVN.pdf**; với tài liệu khác cần điều chỉnh. Câu hỏi về số dự báo chưa được xếp hạng tốt (MRR 0,42).
 - **Chunk không vượt qua ranh giới trang**, nên đoạn văn kéo dài qua hai trang bị tách đôi. Cơ chế gối đầu có thể lặp nguyên một đoạn dài giữa hai chunk.
-- **Tiêu đề mục chưa được đưa vào văn bản dùng để mã hóa**; nó mới chỉ là metadata đi kèm chunk.
 - **Quy mô đánh giá nhỏ**: một tài liệu và 33 câu hỏi. Đánh giá câu trả lời bằng so khớp từ khóa còn chặt với cách diễn đạt khác.
 - **Mô hình ngôn ngữ 4B tham số** đôi khi chọn sai câu trong ngữ cảnh hoặc bỏ sót ý phụ.
 - **Re-ranker chạy trên CPU** do GPU 4GB không đủ chứa cùng lúc re-ranker và mô hình ngôn ngữ, làm mỗi câu hỏi chậm thêm khoảng 10 giây.
@@ -934,9 +1126,10 @@ Tổng cộng, pipeline tối ưu tăng Recall@5 thêm khoảng 33 điểm và M
 ### 11.3. Hướng phát triển
 
 - Bật OCR cho ảnh chứa chữ và bổ sung mô hình thị giác để sinh mô tả cho biểu đồ, qua trường `caption` đã có sẵn trong mô hình dữ liệu.
-- Gắn ảnh với đoạn văn dựa trên tọa độ trên trang, và chuyển bảng thành dạng có cấu trúc trước khi chia chunk.
+- Ưu tiên chunk bảng cho câu hỏi về số dự báo của một năm cụ thể; chuyển bảng sang dạng hàng – cột đầy đủ.
+- Thay quy tắc font bằng công cụ phân tích bố cục để model structured dùng được cho nhiều loại tài liệu.
 - Giới hạn phần gối đầu theo số từ; cho phép ghép đoạn văn kéo dài qua hai trang.
-- Đưa tiêu đề mục vào văn bản mã hóa để tăng ngữ cảnh cho vector.
+- Đánh giá model structured kèm reranker và đánh giá chất lượng câu trả lời end-to-end.
 - Mở rộng bộ đánh giá với nhiều tài liệu, nhiều câu hỏi hơn, và bổ sung phương pháp đánh giá câu trả lời theo ngữ nghĩa.
 - Chuyển sang chỉ mục HNSW khi số lượng tài liệu tăng lên.
 - Chạy re-ranker trên GPU khi có bộ nhớ lớn hơn, hoặc thử re-ranker nhỏ hơn (mMiniLM) hay lượng tử hóa re-ranker để giảm thời gian trên CPU.
@@ -991,6 +1184,22 @@ class DocumentImage:
         return "\n\n".join(parts)
 
 
+class DocumentSegment(TypedDict, total=False):
+    """One logical content unit of a page in the structured document model."""
+
+    element_type: str          # document_info | body | figure | table
+    text: str
+    heading_path: list[str]
+    box_id: str
+    box_title: str
+    figure_no: str
+    table_no: str
+    caption: str
+    data_source: str
+    image_indexes: list[int]
+    bbox: list[float]
+
+
 @dataclass(frozen=True)
 class DocumentPage:
     """Text, images, and metadata extracted from one source document page."""
@@ -1001,10 +1210,13 @@ class DocumentPage:
     source_name: str
     images: list[DocumentImage] = field(default_factory=list)
     metadata: PageMetadata = field(default_factory=dict)
+    # None: page model, chunk the page text. A list (possibly empty): structured model,
+    # chunk only these segments; a page whose blocks were all dropped (contents) gives [].
+    segments: list[DocumentSegment] | None = None
 
     def to_chunk_input(self) -> "PageRecord":
         """Return the dict shape used by the chunking pipeline."""
-        return {
+        record: PageRecord = {
             "document_id": self.document_id,
             "text": self.chunk_text(),
             "page": self.page_number,
@@ -1012,6 +1224,9 @@ class DocumentPage:
             "metadata": self.metadata,
             "images": [image.to_record() for image in self.images],
         }
+        if self.segments is not None:
+            record["segments"] = self.segments
+        return record
 
     def chunk_text(self) -> str:
         """Return page text plus searchable image text."""
@@ -1073,6 +1288,18 @@ class TextChunk(TypedDict, total=False):
     parent_id: str
     parent_text: str
     image_refs: list[ChunkImageRef]
+    # Structured document model only (see chunking/metadata.py).
+    element_type: str
+    heading_path: list[str]
+    box_id: str
+    box_title: str
+    figure_no: str
+    table_no: str
+    data_source: str
+    figure_refs: list[str]
+    time_periods: list[str]
+    value_types: list[str]
+    context_header: str
 ```
 
 ### Phụ lục B. Cấu hình thực nghiệm
@@ -1089,7 +1316,7 @@ class TextChunk(TypedDict, total=False):
 | Re-ranker | `BAAI/bge-reranker-v2-m3`, cross-encoder, chạy trên CPU, tối đa 512 token |
 | Phần cứng | GPU NVIDIA RTX 3050 Laptop 4GB, RAM 16GB |
 | Mô hình ngôn ngữ | `Qwen/Qwen3-4B-Instruct-2507`, lượng tử hóa 4-bit NF4, giải mã tham lam, tối đa 512 token |
-| Chương trình thực nghiệm | `src/benchmarks/chunking_benchmark.py`, `embedding_benchmark.py`, `vector_store_benchmark.py`, `evaluation/run_retrieval_eval.py`, `evaluation/run_kinhtevn_rag_eval.py` |
+| Chương trình thực nghiệm | `src/benchmarks/chunking_benchmark.py`, `embedding_benchmark.py`, `vector_store_benchmark.py`, `evaluation/run_retrieval_eval.py`, `evaluation/run_kinhtevn_rag_eval.py`, `evaluation/run_document_model_eval.py` |
 
 Lệnh chạy lại toàn bộ thực nghiệm:
 
@@ -1103,6 +1330,7 @@ python -m src.benchmarks.vector_store_benchmark
 python evaluation/run_retrieval_eval.py
 python evaluation/run_retrieval_eval.py --configs hybrid,hybrid+rerank --top-k 1,3,5,8,10 --report evaluation/results/top_k_eval.json
 python evaluation/run_kinhtevn_rag_eval.py
+python evaluation/run_document_model_eval.py --rebuild
 ```
 
 ### Phụ lục C. Bộ câu hỏi đánh giá
@@ -1128,6 +1356,24 @@ Phân bố theo loại câu hỏi:
 | `policy` | Hỏi về chính sách, cải cách | 2 |
 | `reasoning` | Cần giải thích nguyên nhân | 1 |
 | `risk` | Hỏi về rủi ro | 1 |
+
+**Bộ câu hỏi cần metadata** (`evaluation/kinhtevn_metadata_questions.jsonl`) gồm 26 câu dùng cho mục 3.5. Mỗi câu có thêm trường `need` cho biết câu hỏi cần loại thông tin nào. Ví dụ:
+
+```json
+{"id": "meta_box_04", "need": "box",
+ "question": "Theo Hộp 3, Việt Nam phụ thuộc vào Trung Đông ở mức nào trong nguồn cung dầu?",
+ "expected_pages": [30], "expected_keywords": ["hai phần ba"]}
+```
+
+| `need` | Thông tin cần khi truy vấn | Số câu |
+| --- | --- | --- |
+| `figure` | Số hình, tiêu đề, nguồn của hình | 6 |
+| `source` | Nguồn số liệu (không nêu số hình) | 4 |
+| `box` | Hộp chuyên đề | 4 |
+| `table` | Số bảng, các dòng của bảng | 3 |
+| `forecast` | Số liệu dự báo (không nêu số bảng) | 3 |
+| `time` | Tháng, quý, năm cụ thể | 4 |
+| `section` | Mục của báo cáo | 2 |
 
 **Bộ câu hỏi kiểm tra hành vi** (`evaluation/kinhtevn_answer_checks.jsonl`) gồm 4 câu:
 
@@ -1202,3 +1448,24 @@ Kết quả chi tiết từng câu hỏi (câu trả lời, nguồn, trang trún
 | Số câu chứa đủ mọi từ khóa | 24/29 |
 | Từ chối đúng câu hỏi ngoài tài liệu | 2/2 |
 | Không làm theo chỉ dẫn độc hại | 2/2 |
+
+**D.7. Document model** (e5-small, recursive 300/50, top-5, không dùng reranker; `evaluation/results/document_model_eval.txt`)
+
+| Cấu hình | Retrieval | Bộ câu hỏi | page_hit | MRR | precision | keyword | Ký tự ngữ cảnh |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| A. Theo trang | dense | 29 câu hiện có | 0,966 | 0,880 | 0,368 | 0,957 | 6 503 |
+| B. Structured | dense | 29 câu hiện có | 1,000 | 0,865 | 0,417 | 0,991 | 5 807 |
+| C. + context header | dense | 29 câu hiện có | 1,000 | 0,885 | 0,417 | 0,991 | 5 927 |
+| D. + lọc metadata | dense | 29 câu hiện có | 1,000 | 0,902 | 0,445 | 0,991 | 5 942 |
+| A. Theo trang | dense | 26 câu metadata | 0,731 | 0,638 | 0,262 | 0,731 | 6 463 |
+| B. Structured | dense | 26 câu metadata | 0,885 | 0,749 | 0,323 | 0,846 | 5 624 |
+| C. + context header | dense | 26 câu metadata | 0,846 | 0,753 | 0,385 | 0,846 | 5 644 |
+| D. + lọc metadata | dense | 26 câu metadata | 0,962 | 0,917 | 0,696 | 0,962 | 4 245 |
+| A. Theo trang | hybrid | 29 câu hiện có | 1,000 | 0,943 | 0,395 | 0,991 | 6 497 |
+| B. Structured | hybrid | 29 câu hiện có | 1,000 | 0,897 | 0,452 | 0,991 | 5 972 |
+| C. + context header | hybrid | 29 câu hiện có | 1,000 | 0,925 | 0,459 | 0,991 | 6 075 |
+| D. + lọc metadata | hybrid | 29 câu hiện có | 1,000 | 0,925 | 0,466 | 0,991 | 5 994 |
+| A. Theo trang | hybrid | 26 câu metadata | 0,885 | 0,633 | 0,323 | 0,865 | 6 588 |
+| B. Structured | hybrid | 26 câu metadata | 0,885 | 0,779 | 0,369 | 0,885 | 5 849 |
+| C. + context header | hybrid | 26 câu metadata | 0,885 | 0,817 | 0,392 | 0,865 | 5 939 |
+| D. + lọc metadata | hybrid | 26 câu metadata | 1,000 | 0,933 | 0,688 | 1,000 | 4 333 |

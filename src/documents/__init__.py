@@ -6,6 +6,7 @@ from .schemas import (
     DocumentImageRecord,
     DocumentMetadata,
     DocumentPage,
+    DocumentSegment,
     PageMetadata,
     PageRecord,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "DocumentImageRecord",
     "DocumentMetadata",
     "DocumentPage",
+    "DocumentSegment",
     "PageMetadata",
     "PageRecord",
     "load_pdf",

@@ -10,7 +10,7 @@ from src.documents.pdf_loader import (
     _is_heading_candidate,
     _strip_boilerplate,
 )
-from src.retrieval import BM25Index, CrossEncoderReranker, VectorStore
+from src.retrieval import BM25Index, CrossEncoderReranker, VectorStore, parse_query
 
 HEADER = "Cập nhật Tình hình Kinh tế Việt Nam • Tháng 5/2026"
 
@@ -104,6 +104,37 @@ class HybridFusionTest(unittest.TestCase):
         fused = service._fuse_keyword_ranks("câu hỏi", results)
         self.assertEqual([result["position"] for result in fused], [7, 0, 1])
         self.assertEqual(fused[0]["keyword_rank"], 1)
+
+
+class StructureCandidatesTest(unittest.TestCase):
+    def test_only_chunks_of_the_named_box_are_scored(self) -> None:
+        service = RagService.__new__(RagService)
+        service.store = mock.Mock(spec=VectorStore)
+        service.store.metadata = [{"box_id": "1"}, {"box_id": "2"}, {}, {"box_id": "2"}]
+        service.store.search_positions.return_value = [{"position": 3}]
+
+        results = service._structure_candidates(np.zeros(4), parse_query("Hộp 2 nói gì?"), 5)
+
+        service.store.search_positions.assert_called_once_with(mock.ANY, [1, 3], top_k=5)
+        service.store.search.assert_not_called()
+        self.assertEqual(results, [{"position": 3}])
+
+    def test_no_matching_chunk_falls_back_to_normal_search(self) -> None:
+        service = RagService.__new__(RagService)
+        service.store = mock.Mock(spec=VectorStore)
+        service.store.metadata = [{"box_id": "1"}]
+        self.assertIsNone(service._structure_candidates(np.zeros(4), parse_query("Hộp 9?"), 5))
+
+
+class FromEnvTest(unittest.TestCase):
+    def test_unset_variables_keep_constructor_defaults(self) -> None:
+        with mock.patch("src.app.rag_service.load_env"), mock.patch.dict(
+            "os.environ", {"TOP_K": "7", "CONTEXT_HEADER": "false"}, clear=True
+        ), mock.patch.object(RagService, "__init__", return_value=None) as init:
+            RagService.from_env(pdf_path="a.pdf", storage_dir="storage")
+        init.assert_called_once_with(
+            pdf_path="a.pdf", storage_dir="storage", top_k=7, context_header=False
+        )
 
 
 class CrossEncoderRerankTest(unittest.TestCase):

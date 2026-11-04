@@ -2,12 +2,12 @@ import os
 import re
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, Callable, Mapping, TypedDict
 
 from ..chunking import split_documents
-from ..core import env_flag, load_env, resolve_path
+from ..core import load_env, resolve_path
 from ..documents import DOCUMENT_PARSER_VERSION, load_pdf
-from ..embeddings import DEFAULT_EMBEDDING_MODEL, EmbeddingService
+from ..embeddings import EmbeddingService
 from ..generation import (
     DEFAULT_LOCAL_LLM_MODEL,
     NO_CONTEXT_ANSWER,
@@ -15,10 +15,20 @@ from ..generation import (
     LocalLLM,
     build_answer_prompt,
 )
-from ..retrieval import CrossEncoderReranker, SearchResult, VectorStore
+from ..retrieval import (
+    CrossEncoderReranker,
+    QueryMetadata,
+    SearchResult,
+    VectorStore,
+    matches_structure,
+    parse_query,
+    soft_score,
+)
 
 
 RETRIEVAL_MODES = {"dense", "hybrid"}
+# The similarity threshold is tuned for this model and its prefixes; change them together.
+DEFAULT_RAG_EMBEDDING_MODEL = "intfloat/multilingual-e5-small"
 
 
 class Source(TypedDict):
@@ -38,6 +48,12 @@ class Source(TypedDict):
     chunking_strategy: str
     parent_id: str
     image_refs: list[dict[str, Any]]
+    # Structured document model only.
+    heading_path: list[str]
+    box_id: str
+    figure_no: str
+    table_no: str
+    data_source: str
 
 
 class RagResponse(TypedDict):
@@ -63,6 +79,40 @@ def _model_name_or_path(value: str) -> str:
     return value
 
 
+def _flag(value: str) -> bool:
+    return value.strip().lower() == "true"
+
+
+# RagService argument -> (environment variable, parser). Unset variables keep the
+# constructor default, so the defaults live in one place.
+ENV_SETTINGS: dict[str, tuple[str, Callable[[str], Any]]] = {
+    "embedding_model": ("EMBEDDING_MODEL", str),
+    "embedding_document_prefix": ("EMBEDDING_DOCUMENT_PREFIX", str),
+    "embedding_query_prefix": ("EMBEDDING_QUERY_PREFIX", str),
+    "top_k": ("TOP_K", int),
+    "chunk_size": ("CHUNK_SIZE", int),
+    "chunk_overlap": ("CHUNK_OVERLAP", int),
+    "chunking_strategy": ("CHUNKING_STRATEGY", str),
+    "min_chunk_size": ("MIN_CHUNK_SIZE", int),
+    "vector_index_type": ("VECTOR_INDEX_TYPE", str),
+    "faiss_hnsw_m": ("FAISS_HNSW_M", int),
+    "faiss_ivf_nlist": ("FAISS_IVF_NLIST", int),
+    "faiss_ivf_nprobe": ("FAISS_IVF_NPROBE", int),
+    "similarity_threshold": ("SIMILARITY_THRESHOLD", float),
+    "max_context_chars": ("MAX_CONTEXT_CHARS", int),
+    "llm_model": ("LOCAL_LLM_MODEL", str),
+    "retrieval_mode": ("RETRIEVAL_MODE", str),
+    "hybrid_candidates": ("HYBRID_CANDIDATES", int),
+    "hybrid_rrf_k": ("HYBRID_RRF_K", int),
+    "reranker_model": ("RERANKER_MODEL", _model_name_or_path),
+    "reranker_device": ("RERANKER_DEVICE", str),
+    "strip_boilerplate": ("DOCUMENT_STRIP_BOILERPLATE", _flag),
+    "document_model": ("DOCUMENT_MODEL", str),
+    "context_header": ("CONTEXT_HEADER", _flag),
+    "metadata_filters": ("METADATA_FILTERS", _flag),
+}
+
+
 class RagService:
     """Orchestrate the RAG layers: ingestion, chunking, embedding, retrieval, generation."""
 
@@ -70,9 +120,9 @@ class RagService:
         self,
         pdf_path: str | Path,
         storage_dir: str | Path,
-        embedding_model: str = DEFAULT_EMBEDDING_MODEL,
-        embedding_document_prefix: str = "",
-        embedding_query_prefix: str = "",
+        embedding_model: str = DEFAULT_RAG_EMBEDDING_MODEL,
+        embedding_document_prefix: str = "passage: ",
+        embedding_query_prefix: str = "query: ",
         top_k: int = 5,
         chunk_size: int = 300,
         chunk_overlap: int = 50,
@@ -82,7 +132,7 @@ class RagService:
         faiss_hnsw_m: int = 32,
         faiss_ivf_nlist: int = 64,
         faiss_ivf_nprobe: int = 8,
-        similarity_threshold: float = 0.25,
+        similarity_threshold: float = 0.795,
         max_context_chars: int = 12000,
         llm_model: str = DEFAULT_LOCAL_LLM_MODEL,
         retrieval_mode: str = "hybrid",
@@ -91,6 +141,9 @@ class RagService:
         reranker_model: str = "",
         reranker_device: str = "cpu",
         strip_boilerplate: bool = True,
+        document_model: str = "structured",
+        context_header: bool = True,
+        metadata_filters: bool = True,
     ):
         load_env()
 
@@ -118,6 +171,12 @@ class RagService:
             else None
         )
         self.strip_boilerplate = strip_boilerplate
+        # "structured" splits pages into body / figure / table segments with headings and boxes.
+        self.document_model = document_model.strip().lower()
+        # Prepend the heading path / box / figure line to each chunk for embedding and BM25.
+        self.context_header = context_header
+        # Use the question's box / figure / table, time and value type at retrieval time.
+        self.metadata_filters = metadata_filters
         self.embedder = EmbeddingService(
             embedding_model,
             document_prefix=embedding_document_prefix,
@@ -130,38 +189,23 @@ class RagService:
             ivf_nlist=faiss_ivf_nlist,
             ivf_nprobe=faiss_ivf_nprobe,
             pipeline_config=self._pipeline_config(),
+            keyword_context_header=context_header,
         )
         self.llm = LocalLLM(llm_model)
 
     @classmethod
     def from_env(cls, pdf_path: str | Path, storage_dir: str | Path) -> "RagService":
-        """Create a service using the settings in ``.env`` and the environment."""
+        """Create a service from ``.env`` and the environment.
+
+        Variables that are not set keep the constructor defaults.
+        """
         load_env()
-        return cls(
-            pdf_path=pdf_path,
-            storage_dir=storage_dir,
-            embedding_model=os.getenv("EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL),
-            embedding_document_prefix=os.getenv("EMBEDDING_DOCUMENT_PREFIX", ""),
-            embedding_query_prefix=os.getenv("EMBEDDING_QUERY_PREFIX", ""),
-            top_k=int(os.getenv("TOP_K", "5")),
-            chunk_size=int(os.getenv("CHUNK_SIZE", "300")),
-            chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "50")),
-            chunking_strategy=os.getenv("CHUNKING_STRATEGY", "recursive"),
-            min_chunk_size=int(os.getenv("MIN_CHUNK_SIZE", "50")),
-            vector_index_type=os.getenv("VECTOR_INDEX_TYPE", "flat"),
-            faiss_hnsw_m=int(os.getenv("FAISS_HNSW_M", "32")),
-            faiss_ivf_nlist=int(os.getenv("FAISS_IVF_NLIST", "64")),
-            faiss_ivf_nprobe=int(os.getenv("FAISS_IVF_NPROBE", "8")),
-            similarity_threshold=float(os.getenv("SIMILARITY_THRESHOLD", "0.25")),
-            max_context_chars=int(os.getenv("MAX_CONTEXT_CHARS", "12000")),
-            llm_model=os.getenv("LOCAL_LLM_MODEL", DEFAULT_LOCAL_LLM_MODEL),
-            retrieval_mode=os.getenv("RETRIEVAL_MODE", "hybrid"),
-            hybrid_candidates=int(os.getenv("HYBRID_CANDIDATES", "10")),
-            hybrid_rrf_k=int(os.getenv("HYBRID_RRF_K", "60")),
-            reranker_model=_model_name_or_path(os.getenv("RERANKER_MODEL", "")),
-            reranker_device=os.getenv("RERANKER_DEVICE", "cpu"),
-            strip_boilerplate=env_flag("DOCUMENT_STRIP_BOILERPLATE", True),
-        )
+        settings = {
+            name: parse(os.environ[variable])
+            for name, (variable, parse) in ENV_SETTINGS.items()
+            if variable in os.environ
+        }
+        return cls(pdf_path=pdf_path, storage_dir=storage_dir, **settings)
 
     def index_mismatches(self) -> dict[str, tuple[Any, Any]]:
         """Return settings that differ between the saved index and this service."""
@@ -180,11 +224,17 @@ class RagService:
             "min_chunk_size": self.min_chunk_size,
             "strip_boilerplate": self.strip_boilerplate,
             "document_parser_version": DOCUMENT_PARSER_VERSION,
+            "document_model": self.document_model,
+            "context_header": self.context_header,
         }
 
     def rebuild_index(self) -> None:
         """Load the PDF, create chunks, embed them, and save the FAISS index."""
-        pages = load_pdf(self.pdf_path, strip_boilerplate=self.strip_boilerplate)
+        pages = load_pdf(
+            self.pdf_path,
+            strip_boilerplate=self.strip_boilerplate,
+            document_model=self.document_model,
+        )
         chunks = split_documents(
             pages,
             chunk_size=self.chunk_size,
@@ -192,7 +242,12 @@ class RagService:
             chunking_strategy=self.chunking_strategy,
             min_chunk_size=self.min_chunk_size,
         )
-        embeddings = self.embedder.embed_documents(chunks)
+        embedding_inputs = (
+            [{**chunk, "text": self._with_context_header(chunk)} for chunk in chunks]
+            if self.context_header
+            else chunks
+        )
+        embeddings = self.embedder.embed_documents(embedding_inputs)
         self.store.build(embeddings, chunks)
         self.store.save()
 
@@ -238,15 +293,65 @@ class RagService:
         reranks = self.retrieval_mode == "hybrid" or self.reranker is not None
         candidate_count = self.hybrid_candidates if reranks else self.top_k
         query_embedding = self.embedder.embed_query(question)
-        results = self._filter_low_similarity(
-            self.store.search(query_embedding, top_k=candidate_count)
-        )
+        query = parse_query(question) if self.metadata_filters else QueryMetadata()
+        results = self._structure_candidates(query_embedding, query, candidate_count)
+        if results is None:
+            results = self._filter_low_similarity(
+                self.store.search(query_embedding, top_k=candidate_count)
+            )
         if self.retrieval_mode == "hybrid" and results:
             results = self._fuse_keyword_ranks(question, results)
+        if query.has_soft_signals and results:
+            results = self._fuse_metadata_ranks(query, results)
         results = self._deduplicate_results(results)
         if self.reranker is not None and results:
             results = self._rerank(question, results)
         return results[: self.top_k]
+
+    def _structure_candidates(
+        self, query_embedding: Any, query: QueryMetadata, candidate_count: int
+    ) -> list[SearchResult] | None:
+        """Return the best chunks of the box / figure / table the question names.
+
+        ``None`` means the question names no structure, or no chunk matches it,
+        and normal search applies. The similarity threshold is skipped here: a
+        question naming "Hộp 2" of this report is not off-topic.
+
+        The filter runs on the stored metadata before scoring, so an IVF or
+        HNSW index cannot leave matching chunks out of the candidates.
+        """
+        if not query.has_structure:
+            return None
+        positions = [
+            position
+            for position, item in enumerate(self.store.metadata)
+            if matches_structure(item, query)
+        ]
+        if not positions:
+            return None
+        return self.store.search_positions(query_embedding, positions, top_k=candidate_count)
+
+    def _fuse_metadata_ranks(
+        self, query: QueryMetadata, results: list[SearchResult]
+    ) -> list[SearchResult]:
+        """Add a third Reciprocal Rank Fusion term for time / value type / source fit.
+
+        Candidates that match none of the question's soft signals get no bonus,
+        so the term only reorders, it never removes a candidate.
+        """
+        scored = [(result, soft_score(result, query)) for result in results]
+        fused: list[SearchResult] = []
+        for rank, (result, score) in enumerate(scored, start=1):
+            base = result.get("hybrid_score", 1 / (self.hybrid_rrf_k + rank))
+            metadata_rank = 1 + sum(1 for _, other in scored if other > score)
+            bonus = 1 / (self.hybrid_rrf_k + metadata_rank) if score > 0 else 0.0
+            fused.append({**result, "metadata_score": score, "hybrid_score": base + bonus})
+        return sorted(fused, key=lambda result: result["hybrid_score"], reverse=True)
+
+    @staticmethod
+    def _with_context_header(chunk: Mapping[str, Any]) -> str:
+        header = str(chunk.get("context_header", ""))
+        return f"{header}\n{chunk['text']}" if header else str(chunk["text"])
 
     def _fuse_keyword_ranks(
         self, question: str, results: list[SearchResult]
@@ -310,7 +415,7 @@ class RagService:
         used_chars = 0
 
         for result in results:
-            header = f"[{result['source']}, trang {result['page']}]"
+            header = self._context_label(result)
             body = str(result.get("parent_text") or result["text"]).strip()
             block = f"{header}\n{body}"
             remaining = self.max_context_chars - used_chars
@@ -323,6 +428,16 @@ class RagService:
                 used_chars += len(block) + 2
 
         return "\n\n".join(blocks)
+
+    @staticmethod
+    def _context_label(result: Mapping[str, Any]) -> str:
+        """Return the source line above a context block, with structure when known."""
+        parts = [f"{result['source']}, trang {result['page']}"]
+        if result.get("context_header"):
+            parts.append(str(result["context_header"]))
+        if result.get("data_source"):
+            parts.append(f"Nguồn số liệu: {result['data_source']}")
+        return "[" + " | ".join(parts) + "]"
 
     @staticmethod
     def _normalize_context_text(text: str) -> str:
@@ -367,6 +482,11 @@ class RagService:
                     "chunking_strategy": result.get("chunking_strategy", ""),
                     "parent_id": result.get("parent_id", ""),
                     "image_refs": result.get("image_refs", []),
+                    "heading_path": result.get("heading_path", []),
+                    "box_id": result.get("box_id", ""),
+                    "figure_no": result.get("figure_no", ""),
+                    "table_no": result.get("table_no", ""),
+                    "data_source": result.get("data_source", ""),
                 }
             )
 
