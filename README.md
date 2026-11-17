@@ -2,17 +2,6 @@
 
 Minimal PDF question-answering application using sentence-transformers, FAISS, and a local Qwen3 model (Qwen3-4B-Instruct-2507 by default).
 
-## Design Notes
-
-- [Báo cáo tiến độ (BAO_CAO.md)](docs/BAO_CAO.md)
-- [Document structure and ingestion flow](docs/document_structure.md)
-- [Source package structure](docs/source_structure.md)
-- [Image handling in documents](docs/image_handling.md)
-- [Chunking strategies and issues](docs/chunking.md)
-- [Embedding models and benchmark](docs/embedding.md)
-- [Vector Store indexes and benchmark](docs/vector_store.md)
-- [Dense, hybrid and reranker retrieval evaluation](docs/retrieval_eval.md)
-
 ## Setup
 
 ```powershell
